@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Generated assessment data
+*.xlsx
+*.json
+*.ndjson
+outputs/
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
