@@ -841,8 +841,8 @@ def build_workbook(data, output_xlsx):
     process_config = add_sheet(wb, "Process vs Config", "Compara utilizacao dos processos internos do proxy com parametros coletados.", "I")
     write_table(process_config, 4, rows["process_config_rows"] or [{"Host": "", "Processo": "", "Status": "", "Acao sugerida": "", "Busy atual %": None, "Busy media 30d %": None, "Valor configurado": None, "Valor recomendado": None, "Ultima coleta config": None}], "ProcessVsConfigV1")
     for r in range(5, 5 + max(len(rows["process_config_rows"]), 1)):
-        process_config[f"C{r}"] = f'=IF(G{r}="","Sem mapeamento",IF(OR(E{r}>Config!$B$22,F{r}>Config!$B$22),"Avaliar aumento",IF(AND(H{r}<>"",G{r}>H{r},F{r}<50),"Avaliar diminuicao","OK")))'
-        process_config[f"D{r}"] = f'=IF(C{r}="Avaliar aumento","Aumentar numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")",IF(C{r}="Avaliar diminuicao","Diminuir numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")",""))'
+        process_config[f"C{r}"] = f'=IF(G{r}="","Sem mapeamento",IF(AND(E{r}=0,F{r}=0,G{r}>1),"Avaliar diminuicao",IF(OR(E{r}>Config!$B$22,F{r}>Config!$B$22),"Avaliar aumento",IF(AND(H{r}<>"",G{r}>H{r},F{r}<50),"Avaliar diminuicao","OK"))))'
+        process_config[f"D{r}"] = f'=IF(C{r}="Avaliar aumento","Aumentar numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")",IF(C{r}="Avaliar diminuicao",IF(AND(E{r}=0,F{r}=0,G{r}>1),"Diminuir numero de pollers para 1 (sem uso atual ou media 30d; configurado="&G{r}&")","Diminuir numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")"),""))'
 
     cache_config = add_sheet(wb, "Cache vs Config", "Compara uso dos caches do proxy com parametros coletados.", "K")
     write_table(cache_config, 4, rows["cache_config_rows"] or [{"Host": "", "Cache": "", "Cache key": "", "Uso atual %": None, "Uso media 30d %": None, "Parametro config": "", "Valor configurado": None, "Status": "", "Acao sugerida": "", "Ultima coleta cache": None, "Ultima coleta config": None}], "CacheVsConfigV1")
