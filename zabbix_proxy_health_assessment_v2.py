@@ -46,6 +46,7 @@ IMPORTANT_KEYS = [
     "system.cpu.num",
     "system.cpu.util",
     "system.uptime",
+    "vm.memory.size[total]",
     "vm.memory.size[pavailable]",
     "vm.memory.size[pused]",
     "vm.memory.utilization",
@@ -145,6 +146,11 @@ def to_number(value):
         return None if math.isnan(num) else num
     except Exception:
         return None
+
+
+def bytes_to_gib(value):
+    num = to_number(value)
+    return None if num is None else num / 1024 / 1024 / 1024
 
 
 def epoch(value):
@@ -589,15 +595,12 @@ def build_rows(data):
             process_config_rows.append({
                 "Host": host.get("name") or host.get("host"),
                 "Processo": process_name,
-                "Process key": item["key_"],
-                "Busy atual %": to_number(item.get("lastvalue")),
-                "Busy media 30d %": data.get("trends30d", {}).get(item["itemid"], {}).get("avg30d"),
-                "Parametro config": config_key,
-                "Valor configurado": to_number(cfg.get("lastvalue")) if cfg else None,
-                "Parametro recomendado": rec_key,
-                "Valor recomendado": to_number(rec.get("lastvalue")) if rec else None,
                 "Status": None,
                 "Acao sugerida": None,
+                "Busy atual %": to_number(item.get("lastvalue")),
+                "Busy media 30d %": data.get("trends30d", {}).get(item["itemid"], {}).get("avg30d"),
+                "Valor configurado": to_number(cfg.get("lastvalue")) if cfg else None,
+                "Valor recomendado": to_number(rec.get("lastvalue")) if rec else None,
                 "Ultima coleta config": excel_dt(cfg.get("lastclock")) if cfg else None,
             })
 
@@ -657,13 +660,12 @@ def build_rows(data):
             "VPS atual": to_number(item_value("zabbix[wcache,values]")),
             "Fila 10m": to_number(item_value("zabbix[queue,10m]")),
             "Preproc queue": to_number(item_value("zabbix[preprocessing_queue]")),
-            "Proc busy atual max": max_of([item.get("lastvalue") for item in process_items]),
-            "Proc busy media 30d max": max_of([data.get("trends30d", {}).get(item["itemid"], {}).get("avg30d") for item in process_items]),
             "CPU atual %": to_number(item_value("system.cpu.util")),
             "CPU media 30d %": stat("system.cpu.util", "avg30d"),
             "Load/core atual": load_avg1 / cpu_num if load_avg1 is not None and cpu_num else None,
             "Memoria atual %": to_number(item_value("vm.memory.size[pused]")) if item("vm.memory.size[pused]") else to_number(item_value("vm.memory.utilization")),
             "Memoria media 30d %": stat("vm.memory.size[pused]", "avg30d") if item("vm.memory.size[pused]") else stat("vm.memory.utilization", "avg30d"),
+            "Memoria total GB": bytes_to_gib(item_value("vm.memory.size[total]")),
             "Disco atual %": to_number(item_value("vfs.fs.size[/,pused]")),
             "Disco media 30d %": stat("vfs.fs.size[/,pused]", "avg30d"),
             "Alertas saude": len(relevant),
@@ -732,18 +734,31 @@ def set_date_formats(ws):
                 cell.number_format = "yyyy-mm-dd hh:mm"
 
 
-def threshold_details_formula(row, process_last, cache_last):
-    process_params = list(dict.fromkeys(PROCESS_CONFIG_MAP.values()))
-    cache_names = list(dict.fromkeys(meta[0] for meta in CACHE_CONFIG_MAP.values()))
+def process_recommendation_count_formula(row, process_last):
+    return (
+        f'IF(Config!$B$24="Sim",'
+        f'COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{row},\'Process vs Config\'!$C$5:$C${process_last},"Avaliar aumento")+'
+        f'COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{row},\'Process vs Config\'!$C$5:$C${process_last},"Avaliar diminuicao"),0)'
+    )
+
+
+def process_recommendation_details_formula(row, process_last):
+    process_names = list(dict.fromkeys(PROCESS_CONFIG_MAP.keys()))
     process_parts = [
-        f'IF(COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{row},\'Process vs Config\'!$F$5:$F${process_last},"{param}",\'Process vs Config\'!$J$5:$J${process_last},"Avaliar aumento")>0,"{param} acima do threshold de pollers; ","")'
-        for param in process_params
+        f'IF(COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{row},\'Process vs Config\'!$B$5:$B${process_last},"{name}",\'Process vs Config\'!$C$5:$C${process_last},"Avaliar aumento")>0,"{name}: aumentar pollers; ","")&'
+        f'IF(COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{row},\'Process vs Config\'!$B$5:$B${process_last},"{name}",\'Process vs Config\'!$C$5:$C${process_last},"Avaliar diminuicao")>0,"{name}: diminuir pollers; ","")'
+        for name in process_names
     ]
+    return f'IF(Config!$B$24="Sim",{"&".join(process_parts)},"")'
+
+
+def config_score_details_formula(row, cache_last):
+    cache_names = list(dict.fromkeys(meta[0] for meta in CACHE_CONFIG_MAP.values()))
     cache_parts = [
         f'IF(COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{row},\'Cache vs Config\'!$B$5:$B${cache_last},"{name}",\'Cache vs Config\'!$H$5:$H${cache_last},"Avaliar ajuste")>0,"{name} acima do threshold de caches; ","")'
         for name in cache_names
     ]
-    return f'IF(Config!$B$23="Sim",{"&".join(process_parts + cache_parts)},"")'
+    return f'IF(Config!$B$21="Sim",{"&".join(cache_parts)},"")'
 
 
 def build_workbook(data, output_xlsx):
@@ -758,8 +773,6 @@ def build_workbook(data, output_xlsx):
         {"Parametro": "Patch minimo", "Valor": 20, "Unidade": "patch", "Uso": "Para Zabbix 7.0.x, versoes com patch menor sao penalizadas."},
         {"Parametro": "Unsupported maximo", "Valor": 0.02, "Unidade": "%", "Uso": "Itens unsupported / total de itens monitorados pelo proxy."},
         {"Parametro": "VPS atual maximo", "Valor": 300, "Unidade": "valores/s", "Uso": "Limite para zabbix[wcache,values] atual."},
-        {"Parametro": "Process busy atual maximo", "Valor": 80, "Unidade": "%", "Uso": "Maior utilizacao atual entre processos internos do proxy."},
-        {"Parametro": "Process busy media 30d maxima", "Valor": 75, "Unidade": "%", "Uso": "Maior media 30d entre processos internos do proxy."},
         {"Parametro": "CPU atual maxima", "Valor": 85, "Unidade": "%", "Uso": "Utilizacao atual de CPU do host."},
         {"Parametro": "CPU media 30d maxima", "Valor": 75, "Unidade": "%", "Uso": "Media 30d de CPU do host."},
         {"Parametro": "Memoria atual maxima", "Valor": 85, "Unidade": "%", "Uso": "Uso atual de memoria."},
@@ -775,20 +788,22 @@ def build_workbook(data, output_xlsx):
         {"Parametro": "Considerar configuracao do Proxy?", "Valor": "Nao", "Unidade": "Sim/Nao", "Uso": "Se Sim, processos/caches acima dos thresholds penalizam o score."},
         {"Parametro": "Threshold pollers", "Valor": 75, "Unidade": "%", "Uso": "Limite de busy atual ou media 30d nos processos mapeados."},
         {"Parametro": "Threshold caches", "Valor": 75, "Unidade": "%", "Uso": "Limite de uso atual ou media 30d dos caches."},
+        {"Parametro": "Mostrar recomendacoes Process vs Config no resumo?", "Valor": "Sim", "Unidade": "Sim/Nao", "Uso": "Se Sim, recomendacoes de aumento/diminuicao de pollers aparecem no resumo sem alterar o score."},
     ]
     write_table(config, 4, config_rows, "ConfigTable", "TableStyleMedium4")
     dv = DataValidation(type="list", formula1='"Sim,Nao"')
     config.add_data_validation(dv)
-    dv.add(config["B19"])
-    dv.add(config["B23"])
+    dv.add(config["B17"])
+    dv.add(config["B21"])
+    dv.add(config["B24"])
 
-    overview = add_sheet(wb, "Overview", f"Coleta: {collected_at} | Hosts online avaliados: {len(rows['host_rows'])}", "K")
-    overview_headers = ["Host", "State", "Score", "Versao", "Unsupported %", "VPS atual", "Proc media 30d max", "CPU media 30d %", "Memoria atual %", "Disco atual %", "Resumo geral do proxy"]
+    overview = add_sheet(wb, "Overview", f"Coleta: {collected_at} | Hosts online avaliados: {len(rows['host_rows'])}", "L")
+    overview_headers = ["Host", "State", "Score", "Versao", "Unsupported %", "VPS atual", "CPU media 30d %", "Memoria total GB", "Memoria atual %", "Memoria media 30d %", "Disco atual %", "Resumo geral do proxy"]
     overview.append([])
     for col_idx, header in enumerate(overview_headers, 1):
         overview.cell(4, col_idx, header)
 
-    host_health = add_sheet(wb, "Host Health", "Score recalculavel com base na aba Config. Proxies offline/desabilitados foram desconsiderados.", "AF")
+    host_health = add_sheet(wb, "Host Health", "Score recalculavel com base na aba Config. Proxies offline/desabilitados foram desconsiderados.", "AE")
     write_table(host_health, 4, rows["host_rows"], "HostHealthTableV2")
 
     process_last = 4 + max(len(rows["process_config_rows"]), 1)
@@ -796,50 +811,52 @@ def build_workbook(data, output_xlsx):
     first = 5
     last = 4 + len(rows["host_rows"])
     for r in range(first, last + 1):
-        host_health[f"AC{r}"] = f'=COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{r},\'Process vs Config\'!$J$5:$J${process_last},"Avaliar aumento")+COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{r},\'Cache vs Config\'!$H$5:$H${cache_last},"Avaliar ajuste")'
-        host_health[f"AD{r}"] = f'=MAX(0,100-IF(Z{r}>0,50,0)-IF(Y{r}>0,20,0)-IF(Config!$B$19="Sim",IF(AB{r}>0,50,0)+IF(AA{r}>0,20,0),0)-IF(Config!$B$23="Sim",IF(AC{r}>0,15,0),0)-IF(F{r}<Config!$B$6,15,0)-IF(L{r}>Config!$B$7,15,0)-IF(M{r}>Config!$B$8,10,0)-IF(P{r}>Config!$B$9,10,0)-IF(Q{r}>Config!$B$10,15,0)-IF(R{r}>Config!$B$11,10,0)-IF(S{r}>Config!$B$12,10,0)-IF(U{r}>Config!$B$13,10,0)-IF(V{r}>Config!$B$14,10,0)-IF(W{r}>Config!$B$15,10,0)-IF(X{r}>Config!$B$16,10,0)-IF(N{r}>Config!$B$17,10,0)-IF(O{r}>Config!$B$18,10,0))'
-        host_health[f"AE{r}"] = f'=IF(AD{r}>=Config!$B$20,"OK",IF(AD{r}>=Config!$B$21,"Atencao",IF(AD{r}>=Config!$B$22,"Risco","Critico")))'
-        host_health[f"AF{r}"] = f'=IF(AD{r}=100,"Proxy dentro dos parametros configurados",IF(Z{r}>0,"Alerta Disaster ativo; ","")&IF(Y{r}>0,"Alerta de saude do proxy ativo; ","")&IF(Config!$B$19="Sim",IF(AB{r}>0,"Alerta Disaster orfao considerado; ","")&IF(AA{r}>0,"Alerta de saude orfao considerado; ",""),"")&{threshold_details_formula(r, process_last, cache_last)}&IF(F{r}<Config!$B$6,"Versao abaixo do corte; ","")&IF(L{r}>Config!$B$7,"Itens unsupported acima do limite; ","")&IF(M{r}>Config!$B$8,"VPS atual acima do limite; ","")&IF(P{r}>Config!$B$9,"Processo busy atual alto; ","")&IF(Q{r}>Config!$B$10,"Media 30d de processo alta; ","")&IF(R{r}>Config!$B$11,"CPU atual alta; ","")&IF(S{r}>Config!$B$12,"CPU media 30d alta; ","")&IF(U{r}>Config!$B$13,"Memoria atual alta; ","")&IF(V{r}>Config!$B$14,"Memoria media 30d alta; ","")&IF(W{r}>Config!$B$15,"Disco atual alto; ","")&IF(X{r}>Config!$B$16,"Disco media 30d alta; ","")&IF(N{r}>Config!$B$17,"Fila 10m acima do limite; ","")&IF(O{r}>Config!$B$18,"Preprocessing queue acima do limite; ",""))'
+        host_health[f"AB{r}"] = f'=COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{r},\'Process vs Config\'!$C$5:$C${process_last},"Avaliar aumento")+COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{r},\'Cache vs Config\'!$H$5:$H${cache_last},"Avaliar ajuste")'
+        host_health[f"AC{r}"] = f'=MAX(0,100-IF(Y{r}>0,50,0)-IF(X{r}>0,20,0)-IF(Config!$B$17="Sim",IF(AA{r}>0,50,0)+IF(Z{r}>0,20,0),0)-IF(Config!$B$21="Sim",IF(AB{r}>0,15,0),0)-IF(F{r}<Config!$B$6,15,0)-IF(L{r}>Config!$B$7,15,0)-IF(M{r}>Config!$B$8,10,0)-IF(P{r}>Config!$B$9,10,0)-IF(Q{r}>Config!$B$10,10,0)-IF(S{r}>Config!$B$11,10,0)-IF(T{r}>Config!$B$12,10,0)-IF(V{r}>Config!$B$13,10,0)-IF(W{r}>Config!$B$14,10,0)-IF(N{r}>Config!$B$15,10,0)-IF(O{r}>Config!$B$16,10,0))'
+        host_health[f"AD{r}"] = f'=IF(AC{r}>=Config!$B$18,"OK",IF(AC{r}>=Config!$B$19,"Atencao",IF(AC{r}>=Config!$B$20,"Risco","Critico")))'
+        host_health[f"AE{r}"] = f'=IF(AND(AC{r}=100,{process_recommendation_count_formula(r, process_last)}=0),"Proxy dentro dos parametros configurados",IF(Y{r}>0,"Alerta Disaster ativo; ","")&IF(X{r}>0,"Alerta de saude do proxy ativo; ","")&IF(Config!$B$17="Sim",IF(AA{r}>0,"Alerta Disaster orfao considerado; ","")&IF(Z{r}>0,"Alerta de saude orfao considerado; ",""),"")&{config_score_details_formula(r, cache_last)}&{process_recommendation_details_formula(r, process_last)}&IF(F{r}<Config!$B$6,"Versao abaixo do corte; ","")&IF(L{r}>Config!$B$7,"Itens unsupported acima do limite; ","")&IF(M{r}>Config!$B$8,"VPS atual acima do limite; ","")&IF(P{r}>Config!$B$9,"CPU atual alta; ","")&IF(Q{r}>Config!$B$10,"CPU media 30d alta; ","")&IF(S{r}>Config!$B$11,"Memoria atual alta; ","")&IF(T{r}>Config!$B$12,"Memoria media 30d alta; ","")&IF(V{r}>Config!$B$13,"Disco atual alto; ","")&IF(W{r}>Config!$B$14,"Disco media 30d alta; ","")&IF(N{r}>Config!$B$15,"Fila 10m acima do limite; ","")&IF(O{r}>Config!$B$16,"Preprocessing queue acima do limite; ",""))'
 
     for idx, _ in enumerate(rows["host_rows"], 5):
         overview.append([
             f"='Host Health'!C{idx}",
-            f"='Host Health'!AE{idx}",
             f"='Host Health'!AD{idx}",
+            f"='Host Health'!AC{idx}",
             f"='Host Health'!E{idx}",
             f"='Host Health'!L{idx}",
             f"='Host Health'!M{idx}",
             f"='Host Health'!Q{idx}",
-            f"='Host Health'!S{idx}",
             f"='Host Health'!U{idx}",
-            f"='Host Health'!W{idx}",
-            f"='Host Health'!AF{idx}",
+            f"='Host Health'!S{idx}",
+            f"='Host Health'!T{idx}",
+            f"='Host Health'!V{idx}",
+            f"='Host Health'!AE{idx}",
         ])
-    table = Table(displayName="OverviewAllProxies", ref=f"A4:K{4 + len(rows['host_rows'])}")
+    table = Table(displayName="OverviewAllProxies", ref=f"A4:L{4 + len(rows['host_rows'])}")
     table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
     overview.add_table(table)
 
     proxy_config = add_sheet(wb, "Proxy Config", "Leituras atuais dos itens do template de configuracao.", "H")
     write_table(proxy_config, 4, rows["proxy_config_rows"] or [{"Host": "", "Config item": "", "Key": "", "Valor": None, "Unidade": "", "Ultima coleta": None, "Estado": "", "Erro": ""}], "ProxyConfigV1")
 
-    process_config = add_sheet(wb, "Process vs Config", "Compara utilizacao dos processos internos do proxy com parametros coletados.", "L")
-    write_table(process_config, 4, rows["process_config_rows"] or [{"Host": "", "Processo": "", "Process key": "", "Busy atual %": None, "Busy media 30d %": None, "Parametro config": "", "Valor configurado": None, "Parametro recomendado": "", "Valor recomendado": None, "Status": "", "Acao sugerida": "", "Ultima coleta config": None}], "ProcessVsConfigV1")
+    process_config = add_sheet(wb, "Process vs Config", "Compara utilizacao dos processos internos do proxy com parametros coletados.", "I")
+    write_table(process_config, 4, rows["process_config_rows"] or [{"Host": "", "Processo": "", "Status": "", "Acao sugerida": "", "Busy atual %": None, "Busy media 30d %": None, "Valor configurado": None, "Valor recomendado": None, "Ultima coleta config": None}], "ProcessVsConfigV1")
     for r in range(5, 5 + max(len(rows["process_config_rows"]), 1)):
-        process_config[f"J{r}"] = f'=IF(F{r}="","Sem mapeamento",IF(OR(D{r}>Config!$B$24,E{r}>Config!$B$24),"Avaliar aumento","OK"))'
-        process_config[f"K{r}"] = f'=IF(J{r}="Avaliar aumento","Avaliar aumento de "&F{r}&" (configurado="&G{r}&", recomendado="&I{r}&")",IF(J{r}="Sem mapeamento","Sem parametro equivalente no template de configuracao","Dentro dos limites configurados"))'
+        process_config[f"C{r}"] = f'=IF(G{r}="","Sem mapeamento",IF(OR(E{r}>Config!$B$22,F{r}>Config!$B$22),"Avaliar aumento",IF(AND(H{r}<>"",G{r}>H{r},F{r}<50),"Avaliar diminuicao","OK")))'
+        process_config[f"D{r}"] = f'=IF(C{r}="Avaliar aumento","Aumentar numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")",IF(C{r}="Avaliar diminuicao","Diminuir numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")",""))'
 
     cache_config = add_sheet(wb, "Cache vs Config", "Compara uso dos caches do proxy com parametros coletados.", "K")
     write_table(cache_config, 4, rows["cache_config_rows"] or [{"Host": "", "Cache": "", "Cache key": "", "Uso atual %": None, "Uso media 30d %": None, "Parametro config": "", "Valor configurado": None, "Status": "", "Acao sugerida": "", "Ultima coleta cache": None, "Ultima coleta config": None}], "CacheVsConfigV1")
     for r in range(5, 5 + max(len(rows["cache_config_rows"]), 1)):
-        cache_config[f"H{r}"] = f'=IF(OR(D{r}>Config!$B$25,E{r}>Config!$B$25),"Avaliar ajuste","OK")'
+        cache_config[f"H{r}"] = f'=IF(OR(D{r}>Config!$B$23,E{r}>Config!$B$23),"Avaliar ajuste","OK")'
         cache_config[f"I{r}"] = f'=IF(H{r}="Avaliar ajuste",IF(F{r}="","Cache acima do threshold; parametro nao mapeado no template de configuracao","Avaliar ajuste de "&F{r}&" (configurado="&G{r}&")"),"Dentro dos limites configurados")'
 
     methodology = add_sheet(wb, "Methodology", "Score focado na saude do proxy, nao na quantidade bruta de problemas dos hosts monitorados por ele.", "D")
     methodology_rows = [
         {"Tema": "Escopo", "Criterio": "Proxies online", "Descricao tecnica simples": "Considera hosts habilitados que usam o template de proxy informado.", "Como interpretar": "Overview representa os proxies avaliaveis no momento da coleta."},
-        {"Tema": "Configuracao do proxy", "Criterio": "Config!B23", "Descricao tecnica simples": "Se Sim, Process vs Config e Cache vs Config entram no score.", "Como interpretar": "Com Nao, mantem score sem penalizacao por configuracao."},
-        {"Tema": "Thresholds", "Criterio": "B24/B25", "Descricao tecnica simples": "Pollers e caches usam threshold default de 75%.", "Como interpretar": "Altere conforme a politica operacional."},
-        {"Tema": "Disco", "Criterio": "Fallback", "Descricao tecnica simples": data.get("disk_selection_note", "Usa vfs.fs.size[/,pused] quando disponivel."), "Como interpretar": "Hosts sem item percentual de disco permanecem vazios em W/X."},
+        {"Tema": "Configuracao do proxy", "Criterio": "Config!B21", "Descricao tecnica simples": "Se Sim, Process vs Config e Cache vs Config entram no score.", "Como interpretar": "Com Nao, mantem score sem penalizacao por configuracao."},
+        {"Tema": "Thresholds", "Criterio": "B22/B23", "Descricao tecnica simples": "Pollers e caches usam threshold default de 75%.", "Como interpretar": "Altere conforme a politica operacional."},
+        {"Tema": "SO", "Criterio": "Capacidade do host", "Descricao tecnica simples": "CPU, load por core, memoria total, memoria usada e disco raiz sao incluidos para correlacionar carga do proxy com capacidade do sistema operacional.", "Como interpretar": "Memoria total e apoio de capacidade; uso percentual segue como criterio de score."},
+        {"Tema": "Disco", "Criterio": "Fallback", "Descricao tecnica simples": data.get("disk_selection_note", "Usa vfs.fs.size[/,pused] quando disponivel."), "Como interpretar": "Hosts sem item percentual de disco permanecem vazios em V/W."},
     ]
     write_table(methodology, 4, methodology_rows, "MethodologyTableV2")
 
