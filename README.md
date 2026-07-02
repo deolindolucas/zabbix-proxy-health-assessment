@@ -8,6 +8,8 @@ O objetivo do assessment e responder uma pergunta bem pratica:
 
 Por isso, o score nao mede a quantidade bruta de problemas dos hosts monitorados por um proxy. Ele foca em sinais que afetam o proprio proxy, a aplicacao Zabbix Proxy, os processos internos, filas, caches e recursos do sistema operacional.
 
+A coleta e adaptativa: alem das chaves essenciais do assessment, o script descobre os itens habilitados nos templates informados em `--proxy-template-id` e `--config-template-id`. Isso reduz o risco de deixar fora leituras simples quando o template de saude ou o template de configuracao evoluem.
+
 ## Requisitos
 
 - Python 3.10 ou superior.
@@ -74,8 +76,6 @@ Principais parametros:
 | Patch minimo | `20` | Penaliza versoes `7.0.x` abaixo do patch minimo. |
 | Unsupported maximo | `2%` | Limite de itens unsupported em relacao ao total de itens monitorados pelo proxy. |
 | VPS atual maximo | `300` | Limite para valores por segundo processados pelo proxy. |
-| Process busy atual maximo | `80%` | Limite para maior busy atual entre processos internos do proxy. |
-| Process busy media 30d maxima | `75%` | Limite para maior media 30 dias entre processos internos. |
 | CPU atual/media 30d | `85%` / `75%` | Limites de CPU do sistema operacional. |
 | Memoria atual/media 30d | `85%` / `80%` | Limites de memoria do sistema operacional. |
 | Disco atual/media 30d | `85%` / `80%` | Limites de disco do filesystem selecionado. |
@@ -85,6 +85,7 @@ Principais parametros:
 | Considerar configuracao do Proxy? | `Nao` | Controla se Process vs Config e Cache vs Config entram no score. |
 | Threshold pollers | `75%` | Limite para busy atual ou media 30d nos processos mapeados. |
 | Threshold caches | `75%` | Limite para uso atual ou media 30d dos caches. |
+| Mostrar recomendacoes Process vs Config no resumo? | `Sim` | Mostra recomendacoes de aumento/diminuicao no resumo do proxy sem alterar o score. |
 
 ### Overview
 
@@ -95,8 +96,7 @@ Resumo executivo dos proxies avaliados. Contem uma linha por proxy online/habili
 - versao;
 - percentual de unsupported;
 - VPS atual;
-- maior media 30d de processo busy;
-- CPU, memoria e disco;
+- CPU, memoria total, memoria atual/media 30d e disco;
 - resumo textual do proxy.
 
 ### Host Health
@@ -107,19 +107,17 @@ Colunas importantes:
 
 - `Unsupported %`: itens unsupported dividido pelo total de itens.
 - `VPS atual`: valor atual de `zabbix[wcache,values]`.
-- `Proc busy atual max`: maior valor atual entre os itens `zabbix[process,...,avg,busy]`.
-- `Proc busy media 30d max`: maior media 30 dias entre os processos internos.
 - `Disco atual %` e `Disco media 30d %`: uso de disco selecionado pelo fallback descrito abaixo.
 - `Config issues`: quantidade de problemas encontrados em `Process vs Config` e `Cache vs Config`.
 - `Score`: pontuacao recalculavel.
 - `State`: classificacao derivada do score.
 - `Resumo do proxy`: texto objetivo com os achados que atacam o score.
 
-Quando a avaliacao de configuracao esta ligada, o resumo descreve objetivamente os parametros acima do threshold, por exemplo:
+Quando a avaliacao de configuracao esta ligada, caches acima do threshold entram no score e no resumo. As recomendacoes de `Process vs Config` podem aparecer no resumo por meio de `Mostrar recomendacoes Process vs Config no resumo?`, mas essa opcao nao altera o score.
 
 ```text
-num.StartSNMPPollers acima do threshold de pollers;
 Configuration cache acima do threshold de caches;
+http poller: diminuir pollers;
 ```
 
 ### Proxy Config
@@ -136,6 +134,8 @@ Exemplos de parametros esperados:
 - `num.CacheSize`
 - `num.valueCacheSize`
 - `num.trendcachesize`
+
+O script coleta todas as chaves habilitadas do template de configuracao informado, nao apenas os exemplos acima.
 
 ### Process vs Config
 
@@ -171,6 +171,26 @@ OU Busy media 30d % > Threshold pollers
 
 Por padrao, `Threshold pollers = 75%`.
 
+Para reducao, existem duas regras:
+
+```text
+Se Valor configurado > Valor recomendado
+E Busy media 30d % < 50
+=> Status = Avaliar diminuicao
+```
+
+Excecao importante:
+
+```text
+Se Busy atual % = 0
+E Busy media 30d % = 0
+E Valor configurado > 1
+=> Status = Avaliar diminuicao
+=> Acao sugerida = diminuir numero de pollers para 1
+```
+
+Nesse caso, o valor recomendado coletado e ignorado porque o pool nao demonstra uso real no proxy.
+
 ### Cache vs Config
 
 Compara uso dos caches do Zabbix Proxy com o threshold configurado.
@@ -191,6 +211,8 @@ OU Uso media 30d % > Threshold caches
 ```
 
 Por padrao, `Threshold caches = 75%`.
+
+Quando existem as duas formas para o mesmo cache, o script prefere a metrica `pused` e usa `pfree` apenas como fallback.
 
 ### Process 30d
 
@@ -235,8 +257,6 @@ Penalizacoes principais:
 | Versao abaixo do patch minimo | `-15` |
 | Unsupported acima do limite | `-15` |
 | VPS atual acima do limite | `-10` |
-| Processo busy atual acima do limite | `-10` |
-| Processo busy media 30d acima do limite | `-15` |
 | CPU atual/media 30d acima do limite | `-10` cada |
 | Memoria atual/media 30d acima do limite | `-10` cada |
 | Disco atual/media 30d acima do limite | `-10` cada |
@@ -245,6 +265,8 @@ Penalizacoes principais:
 | Config issues, se habilitado | `-15` |
 
 O score nunca fica abaixo de 0.
+
+`Config issues` considera processos com `Avaliar aumento` e caches com `Avaliar ajuste` quando `Considerar configuracao do Proxy? = Sim`. Recomendacoes de `Avaliar diminuicao` sao operacionais e podem aparecer no resumo, mas nao reduzem o score.
 
 ## States
 
@@ -283,3 +305,4 @@ Se nenhum item percentual de disco existir para o host, as colunas de disco perm
 - A analise de disco depende da existencia de itens percentuais `vfs.fs.size[...,pused/pfree]`.
 - A comparacao de pollers usa o percentual busy do proprio Zabbix. A quantidade configurada e usada para indicar qual parametro revisar, nao como divisor matematico.
 - A qualidade da aba `Proxy Config` depende do template de configuracao informado coletar corretamente os valores do arquivo do proxy.
+- A coleta acompanha as chaves habilitadas nos templates informados; itens novos passam a aparecer em `Raw Items`/`Proxy Config`, mas so alteram o score quando fazem parte das regras documentadas.

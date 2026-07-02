@@ -64,9 +64,14 @@ IMPORTANT_KEYS = [
     "zabbix[proxy_buffer,state,changes]",
     "zabbix[proxy_buffer,buffer,pused]",
     "zabbix[rcache,buffer,pfree]",
+    "zabbix[rcache,buffer,pused]",
     "zabbix[wcache,history,pfree]",
+    "zabbix[wcache,history,pused]",
     "zabbix[wcache,index,pused]",
     "zabbix[vmware,buffer,pused]",
+    "zabbix[proxy_history]",
+    "zabbix[queue]",
+    "zabbix[discovery_queue]",
     "zabbix[wcache,values]",
     "zabbix[wcache,values,float]",
     "zabbix[wcache,values,uint]",
@@ -104,13 +109,13 @@ RECOMMENDED_CONFIG_MAP = {
     "trapper": "num.recomendado.trappers",
     "unreachable poller": "num.recomendado.unreachable",
 }
-CACHE_CONFIG_MAP = {
-    "zabbix[rcache,buffer,pfree]": ("Configuration cache", "num.CacheSize", "pfree"),
-    "zabbix[wcache,history,pfree]": ("History write cache", "", "pfree"),
-    "zabbix[wcache,index,pused]": ("History index cache", "", "pused"),
-    "zabbix[proxy_buffer,buffer,pused]": ("Proxy memory buffer", "", "pused"),
-    "zabbix[vmware,buffer,pused]": ("VMware cache", "", "pused"),
-}
+CACHE_CONFIG_MAP = [
+    ("Configuration cache", "num.CacheSize", [("zabbix[rcache,buffer,pused]", "pused"), ("zabbix[rcache,buffer,pfree]", "pfree")]),
+    ("History write cache", "", [("zabbix[wcache,history,pused]", "pused"), ("zabbix[wcache,history,pfree]", "pfree")]),
+    ("History index cache", "", [("zabbix[wcache,index,pused]", "pused")]),
+    ("Proxy memory buffer", "", [("zabbix[proxy_buffer,buffer,pused]", "pused")]),
+    ("VMware cache", "num.VMwareCacheSize", [("zabbix[vmware,buffer,pused]", "pused")]),
+]
 
 
 def normalize_zabbix_url(url: str) -> str:
@@ -278,6 +283,16 @@ def collect_trends(api, items, now_ts):
 
 def collect_base(api, zabbix_url, proxy_template_id):
     now_ts = int(datetime.now(timezone.utc).timestamp())
+    template_items = rpc(
+        api,
+        "item.get",
+        {
+            "output": ["itemid", "name", "key_", "value_type", "units", "type", "delay", "status"],
+            "templateids": [str(proxy_template_id)],
+            "sortfield": "name",
+        },
+    )
+    proxy_template_keys = sorted({item["key_"] for item in template_items if item.get("status") == "0"})
     hosts = rpc(
         api,
         "host.get",
@@ -309,7 +324,9 @@ def collect_base(api, zabbix_url, proxy_template_id):
     )
     relevant_items = [
         item for item in items
-        if item["key_"] in IMPORTANT_KEYS or item["key_"].startswith(PROCESS_KEY_PREFIX)
+        if item["key_"] in IMPORTANT_KEYS
+        or item["key_"] in proxy_template_keys
+        or item["key_"].startswith(PROCESS_KEY_PREFIX)
     ]
     trends30d = collect_trends(api, relevant_items, now_ts)
 
@@ -342,6 +359,7 @@ def collect_base(api, zabbix_url, proxy_template_id):
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "api_url": zabbix_url,
         "template_id": str(proxy_template_id),
+        "proxy_template_item_keys": proxy_template_keys,
         "hosts": hosts,
         "items": relevant_items,
         "trends30d": trends30d,
@@ -604,8 +622,13 @@ def build_rows(data):
                 "Ultima coleta config": excel_dt(cfg.get("lastclock")) if cfg else None,
             })
 
-        for cache_key, (cache_name, config_key, mode) in CACHE_CONFIG_MAP.items():
-            cache_item = items_by_host.get(hostid, {}).get(cache_key)
+        for cache_name, config_key, candidates in CACHE_CONFIG_MAP:
+            cache_key, mode, cache_item = None, None, None
+            for candidate_key, candidate_mode in candidates:
+                candidate_item = items_by_host.get(hostid, {}).get(candidate_key)
+                if candidate_item:
+                    cache_key, mode, cache_item = candidate_key, candidate_mode, candidate_item
+                    break
             if not cache_item:
                 continue
             cfg = cfg_items.get(config_key) if config_key else None
@@ -734,6 +757,25 @@ def set_date_formats(ws):
                 cell.number_format = "yyyy-mm-dd hh:mm"
 
 
+def apply_readability_layout(wb):
+    widths = {
+        ("Overview", "L"): 70,
+        ("Host Health", "AE"): 75,
+        ("Process vs Config", "D"): 72,
+        ("Cache vs Config", "I"): 48,
+        ("Methodology", "C"): 58,
+        ("Methodology", "D"): 58,
+        ("Raw Items", "K"): 45,
+        ("Proxy Config", "H"): 45,
+    }
+    for (sheet_name, column), width in widths.items():
+        if sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            ws.column_dimensions[column].width = width
+            for cell in ws[column]:
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+
 def process_recommendation_count_formula(row, process_last):
     return (
         f'IF(Config!$B$24="Sim",'
@@ -753,7 +795,7 @@ def process_recommendation_details_formula(row, process_last):
 
 
 def config_score_details_formula(row, cache_last):
-    cache_names = list(dict.fromkeys(meta[0] for meta in CACHE_CONFIG_MAP.values()))
+    cache_names = list(dict.fromkeys(cache_name for cache_name, _config_key, _candidates in CACHE_CONFIG_MAP))
     cache_parts = [
         f'IF(COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{row},\'Cache vs Config\'!$B$5:$B${cache_last},"{name}",\'Cache vs Config\'!$H$5:$H${cache_last},"Avaliar ajuste")>0,"{name} acima do threshold de caches; ","")'
         for name in cache_names
@@ -930,6 +972,7 @@ def build_workbook(data, output_xlsx):
             for cell in row:
                 cell.font = Font(name="Aptos", size=10, bold=cell.font.bold, color=cell.font.color)
                 cell.alignment = Alignment(vertical="top", wrap_text=False)
+    apply_readability_layout(wb)
 
     output_xlsx.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_xlsx)
