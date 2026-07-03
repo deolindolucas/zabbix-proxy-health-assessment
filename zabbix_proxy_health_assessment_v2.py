@@ -67,6 +67,8 @@ IMPORTANT_KEYS = [
     "zabbix[wcache,history,pfree]",
     "zabbix[wcache,history,pused]",
     "zabbix[wcache,index,pused]",
+    "zabbix[wcache,trend,pused]",
+    "zabbix[vcache,buffer,pused]",
     "zabbix[vmware,buffer,pused]",
     "zabbix[proxy_history]",
     "zabbix[queue]",
@@ -85,7 +87,7 @@ TREND_KEYS = set(IMPORTANT_KEYS) - TREND_EXCLUDED_KEYS
 
 PROCESS_CONFIG_MAP = {
     "agent poller": "num.StartAgentPollers",
-    "discoverer": "num.StartDiscoverers",
+    "browser poller": "num.StartBrowserPollers",
     "discovery worker": "num.StartDiscoverers",
     "history syncer": "num.StartDBSyncers",
     "http agent poller": "num.StartHTTPAgentPollers",
@@ -95,26 +97,48 @@ PROCESS_CONFIG_MAP = {
     "java poller": "num.StartJavaPollers",
     "odbc poller": "num.StartODBCPollers",
     "poller": "num.poller",
+    "preprocessing worker": "num.StartPreprocessors",
     "snmp poller": "num.StartSNMPPollers",
     "snmp trapper": "num.StartSNMPTrapper",
     "trapper": "num.StartTrappers",
     "unreachable poller": "num.StartPollersUnreachable",
+    "vmware collector": "num.StartVMwareCollectors",
 }
 RECOMMENDED_CONFIG_MAP = {
+    "agent poller": "num.recomendado.agent",
+    "browser poller": "num.recomendado.browser",
+    "discovery worker": "num.recomendado.discoverers",
     "http poller": "num.recomendado.http",
+    "http agent poller": "num.recomendado.httpagent",
+    "icmp pinger": "num.recomendado.pingers",
     "ipmi poller": "num.recomendado.ipmi",
+    "java poller": "num.recomendado.java",
     "odbc poller": "num.recomendado.odbc",
-    "poller": "num.ideal.pollers",
+    "poller": "num.recomendado.pollers",
+    "preprocessing worker": "num.recomendado.preprocessors",
+    "snmp poller": "num.recomendado.snmp",
     "trapper": "num.recomendado.trappers",
     "unreachable poller": "num.recomendado.unreachable",
+    "vmware collector": "num.recomendado.vmware",
 }
 CACHE_CONFIG_MAP = [
-    ("Configuration cache", "num.CacheSize", [("zabbix[rcache,buffer,pused]", "pused"), ("zabbix[rcache,buffer,pfree]", "pfree")]),
-    ("History write cache", "", [("zabbix[wcache,history,pused]", "pused"), ("zabbix[wcache,history,pfree]", "pfree")]),
-    ("History index cache", "", [("zabbix[wcache,index,pused]", "pused")]),
-    ("Proxy memory buffer", "", [("zabbix[proxy_buffer,buffer,pused]", "pused")]),
-    ("VMware cache", "num.VMwareCacheSize", [("zabbix[vmware,buffer,pused]", "pused")]),
+    ("Configuration cache", "num.CacheSize", "num.CacheSize.bytes", "num.recomendado.CacheSize", [("zabbix[rcache,buffer,pused]", "pused"), ("zabbix[rcache,buffer,pfree]", "pfree")]),
+    ("History write cache", "num.HistoryCacheSize", "num.HistoryCacheSize.bytes", "num.recomendado.HistoryCacheSize", [("zabbix[wcache,history,pused]", "pused"), ("zabbix[wcache,history,pfree]", "pfree")]),
+    ("History index cache", "num.HistoryIndexCacheSize", "num.HistoryIndexCacheSize.bytes", "num.recomendado.HistoryIndexCacheSize", [("zabbix[wcache,index,pused]", "pused")]),
+    ("Trend write cache", "num.trendcachesize", "num.TrendCacheSize.bytes", "num.recomendado.TrendCacheSize", [("zabbix[wcache,trend,pused]", "pused")]),
+    ("Value cache", "num.valueCacheSize", "num.ValueCacheSize.bytes", "num.recomendado.ValueCacheSize", [("zabbix[vcache,buffer,pused]", "pused")]),
+    ("Proxy memory buffer", "", "", "", [("zabbix[proxy_buffer,buffer,pused]", "pused")]),
+    ("VMware cache", "num.VMwareCacheSize", "", "", [("zabbix[vmware,buffer,pused]", "pused")]),
 ]
+CACHE_DEFAULTS = {
+    "num.CacheSize": "8M",
+    "num.HistoryCacheSize": "16M",
+    "num.HistoryIndexCacheSize": "4M",
+    "num.trendcachesize": "4M",
+    "num.valueCacheSize": "8M",
+    "num.VMwareCacheSize": "8M",
+}
+CACHE_TARGET_LOAD = 0.60
 
 
 def normalize_zabbix_url(url: str) -> str:
@@ -155,6 +179,34 @@ def to_number(value):
 def bytes_to_gib(value):
     num = to_number(value)
     return None if num is None else num / 1024 / 1024 / 1024
+
+
+def parse_size_to_bytes(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    match = re.match(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT]?B?|[KMGT])?\s*$", str(value), re.I)
+    if not match:
+        return None
+    number = float(match.group(1))
+    unit = (match.group(2) or "B").upper()
+    if unit in ("K", "M", "G", "T"):
+        unit += "B"
+    multipliers = {
+        "B": 1,
+        "KB": 1024,
+        "MB": 1024 ** 2,
+        "GB": 1024 ** 3,
+        "TB": 1024 ** 4,
+    }
+    multiplier = multipliers.get(unit)
+    return round(number * multiplier) if multiplier else None
+
+
+def positive_number(value):
+    number = to_number(value)
+    return number if number is not None and number > 0 else None
 
 
 def epoch(value):
@@ -294,20 +346,19 @@ def get_host_group(api, host_group_name):
     return groups[0]
 
 
-def collect_base(api, zabbix_url, host_group_name):
+def collect_base(api, zabbix_url, host_group_name, template_id=None):
     now_ts = int(datetime.now(timezone.utc).timestamp())
     host_group = get_host_group(api, host_group_name)
-    hosts = rpc(
-        api,
-        "host.get",
-        {
-            "output": ["hostid", "host", "name", "status", "available", "proxy_hostid"],
-            "selectInterfaces": ["ip", "dns", "type", "main", "useip"],
-            "selectParentTemplates": ["templateid", "host", "name"],
-            "groupids": [host_group["groupid"]],
-            "sortfield": "name",
-        },
-    )
+    host_params = {
+        "output": ["hostid", "host", "name", "status", "available", "proxy_hostid"],
+        "selectInterfaces": ["ip", "dns", "type", "main", "useip"],
+        "selectParentTemplates": ["templateid", "host", "name"],
+        "groupids": [host_group["groupid"]],
+        "sortfield": "name",
+    }
+    if template_id:
+        host_params["templateids"] = [str(template_id)]
+    hosts = rpc(api, "host.get", host_params)
     hosts = [host for host in hosts if host.get("status") == "0"]
     hostids = [host["hostid"] for host in hosts]
     if not hostids:
@@ -362,12 +413,55 @@ def collect_base(api, zabbix_url, host_group_name):
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "api_url": zabbix_url,
         "host_group": {"groupid": host_group["groupid"], "name": host_group["name"]},
+        "template_filter": str(template_id or ""),
         "hosts": hosts,
         "items": relevant_items,
         "trends30d": trends30d,
         "problems": problems,
         "triggers": triggers,
     }
+
+
+def filter_data_hosts(data, excluded_hosts):
+    excluded = {value.strip().casefold() for value in excluded_hosts if value and value.strip()}
+    if not excluded:
+        return []
+
+    removed = []
+    kept_hostids = set()
+    removed_hostids = set()
+    for host in data.get("hosts", []):
+        aliases = {str(host.get("host") or "").casefold(), str(host.get("name") or "").casefold()}
+        if aliases & excluded:
+            removed.append(host)
+            removed_hostids.add(host["hostid"])
+        else:
+            kept_hostids.add(host["hostid"])
+
+    data["hosts"] = [host for host in data.get("hosts", []) if host["hostid"] in kept_hostids]
+    data["items"] = [item for item in data.get("items", []) if item.get("hostid") in kept_hostids]
+    data["proxy_config_items"] = [
+        item for item in data.get("proxy_config_items", [])
+        if item.get("hostid") in kept_hostids
+    ]
+
+    kept_triggerids = set()
+    filtered_triggers = []
+    for trigger in data.get("triggers", []):
+        hosts = [host for host in trigger.get("hosts") or [] if host.get("hostid") in kept_hostids]
+        items = [item for item in trigger.get("items") or [] if item.get("hostid") in kept_hostids]
+        if hosts:
+            trigger = dict(trigger)
+            trigger["hosts"] = hosts
+            trigger["items"] = items
+            filtered_triggers.append(trigger)
+            kept_triggerids.add(trigger["triggerid"])
+    data["triggers"] = filtered_triggers
+    data["problems"] = [
+        problem for problem in data.get("problems", [])
+        if problem.get("objectid") in kept_triggerids
+    ]
+    return removed
 
 
 def collect_proxy_config(api, data):
@@ -604,7 +698,7 @@ def build_rows(data):
                 "Ultima coleta config": excel_dt(cfg.get("lastclock")) if cfg else None,
             })
 
-        for cache_name, config_key, candidates in CACHE_CONFIG_MAP:
+        for cache_name, config_key, bytes_key, recommended_key, candidates in CACHE_CONFIG_MAP:
             cache_key, mode, cache_item = None, None, None
             for candidate_key, candidate_mode in candidates:
                 candidate_item = items_by_host.get(hostid, {}).get(candidate_key)
@@ -614,14 +708,32 @@ def build_rows(data):
             if not cache_item:
                 continue
             cfg = cfg_items.get(config_key) if config_key else None
+            cfg_bytes = cfg_items.get(bytes_key) if bytes_key else None
+            recommended = cfg_items.get(recommended_key) if recommended_key else None
+            configured_value = (
+                cfg.get("lastvalue")
+                if cfg and cfg.get("lastvalue") not in (None, "")
+                else CACHE_DEFAULTS.get(config_key)
+            )
+            configured_bytes = (
+                positive_number(cfg_bytes.get("lastvalue")) if cfg_bytes else None
+            ) or parse_size_to_bytes(configured_value)
+            usage_now = cache_used(cache_item.get("lastvalue"), mode)
+            usage_avg = cache_used(data.get("trends30d", {}).get(cache_item["itemid"], {}).get("avg30d"), mode)
+            usage_for_recommendation = max_of([usage_now, usage_avg])
+            recommended_bytes = positive_number(recommended.get("lastvalue")) if recommended else None
+            if recommended_bytes is None and configured_bytes is not None and usage_for_recommendation is not None:
+                recommended_bytes = math.ceil((configured_bytes * (usage_for_recommendation / 100)) / CACHE_TARGET_LOAD)
             cache_config_rows.append({
                 "Host": host.get("name") or host.get("host"),
                 "Cache": cache_name,
                 "Cache key": cache_key,
-                "Uso atual %": cache_used(cache_item.get("lastvalue"), mode),
-                "Uso media 30d %": cache_used(data.get("trends30d", {}).get(cache_item["itemid"], {}).get("avg30d"), mode),
+                "Uso atual %": usage_now,
+                "Uso media 30d %": usage_avg,
                 "Parametro config": config_key,
-                "Valor configurado": to_number(cfg.get("lastvalue")) if cfg else None,
+                "Valor configurado": to_number(configured_value) if to_number(configured_value) is not None else configured_value,
+                "Valor configurado bytes": configured_bytes,
+                "Valor recomendado bytes": recommended_bytes,
                 "Status": None,
                 "Acao sugerida": None,
                 "Ultima coleta cache": excel_dt(cache_item.get("lastclock")),
@@ -744,7 +856,7 @@ def apply_readability_layout(wb):
         ("Overview", "L"): 70,
         ("Host Health", "AE"): 75,
         ("Process vs Config", "D"): 72,
-        ("Cache vs Config", "I"): 48,
+        ("Cache vs Config", "K"): 58,
         ("Methodology", "C"): 58,
         ("Methodology", "D"): 58,
         ("Raw Items", "K"): 45,
@@ -777,16 +889,69 @@ def process_recommendation_details_formula(row, process_last):
 
 
 def config_score_details_formula(row, cache_last):
-    cache_names = list(dict.fromkeys(cache_name for cache_name, _config_key, _candidates in CACHE_CONFIG_MAP))
+    cache_names = list(dict.fromkeys(cache_name for cache_name, _config_key, _bytes_key, _recommended_key, _candidates in CACHE_CONFIG_MAP))
     cache_parts = [
-        f'IF(COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{row},\'Cache vs Config\'!$B$5:$B${cache_last},"{name}",\'Cache vs Config\'!$H$5:$H${cache_last},"Avaliar ajuste")>0,"{name} acima do threshold de caches; ","")'
+        f'IF(COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{row},\'Cache vs Config\'!$B$5:$B${cache_last},"{name}",\'Cache vs Config\'!$J$5:$J${cache_last},"Avaliar ajuste")>0,"{name} acima do threshold de caches; ","")'
         for name in cache_names
     ]
     return f'IF(Config!$B$21="Sim",{"&".join(cache_parts)},"")'
 
 
+def process_config_status(row, poller_threshold=75):
+    configured = positive_number(row.get("Valor configurado"))
+    recommended = positive_number(row.get("Valor recomendado"))
+    current = to_number(row.get("Busy atual %")) or 0
+    avg30d = to_number(row.get("Busy media 30d %")) or 0
+    if configured is None:
+        return "Sem mapeamento"
+    if current == 0 and avg30d == 0 and configured > 1:
+        return "Avaliar diminuicao"
+    if current > poller_threshold or avg30d > poller_threshold:
+        return "Avaliar aumento"
+    if recommended is not None and configured > recommended and avg30d < 50:
+        return "Avaliar diminuicao"
+    return "OK"
+
+
+def process_config_action(row, status):
+    configured = positive_number(row.get("Valor configurado"))
+    recommended = positive_number(row.get("Valor recomendado"))
+    current = to_number(row.get("Busy atual %")) or 0
+    avg30d = to_number(row.get("Busy media 30d %")) or 0
+    if status == "Avaliar aumento":
+        return f"Aumentar numero de pollers (configurado={configured:g}, recomendado={recommended:g})" if recommended is not None else f"Aumentar numero de pollers (configurado={configured:g})"
+    if status == "Avaliar diminuicao":
+        if configured is not None and current == 0 and avg30d == 0 and configured > 1:
+            return f"Diminuir numero de pollers para 1 (sem uso atual ou media 30d; configurado={configured:g})"
+        return f"Diminuir numero de pollers (configurado={configured:g}, recomendado={recommended:g})" if recommended is not None else f"Diminuir numero de pollers (configurado={configured:g})"
+    return ""
+
+
+def cache_config_status(row, cache_threshold=75):
+    current = to_number(row.get("Uso atual %")) or 0
+    avg30d = to_number(row.get("Uso media 30d %")) or 0
+    return "Avaliar ajuste" if current > cache_threshold or avg30d > cache_threshold else "OK"
+
+
+def cache_config_action(row, status):
+    if status != "Avaliar ajuste":
+        return ""
+    configured = positive_number(row.get("Valor configurado bytes"))
+    recommended = positive_number(row.get("Valor recomendado bytes"))
+    if configured is not None and recommended is not None:
+        return f"Avaliar aumento de cache (configurado={configured:g} bytes, recomendado={recommended:g} bytes)"
+    return "Avaliar aumento de cache"
+
+
 def build_workbook(data, output_xlsx):
     rows = build_rows(data)
+    for row in rows["process_config_rows"]:
+        row["Status"] = process_config_status(row)
+        row["Acao sugerida"] = process_config_action(row, row["Status"])
+    for row in rows["cache_config_rows"]:
+        row["Status"] = cache_config_status(row)
+        row["Acao sugerida"] = cache_config_action(row, row["Status"])
+
     wb = Workbook()
     wb.remove(wb.active)
     collected_at = data["collected_at"]
@@ -827,20 +992,50 @@ def build_workbook(data, output_xlsx):
     for col_idx, header in enumerate(overview_headers, 1):
         overview.cell(4, col_idx, header)
 
-    host_health = add_sheet(wb, "Host Health", "Score recalculavel com base na aba Config. Proxies offline/desabilitados foram desconsiderados.", "AE")
+    process_summary_names = list(dict.fromkeys(PROCESS_CONFIG_MAP.keys()))
+    process_summary_columns = {
+        name: get_column_letter(35 + idx)
+        for idx, name in enumerate(process_summary_names)
+    }
+    helper_last_col = get_column_letter(34 + len(process_summary_names))
+
+    host_health = add_sheet(wb, "Host Health", "Score recalculavel com base na aba Config. Proxies offline/desabilitados foram desconsiderados.", helper_last_col)
     write_table(host_health, 4, rows["host_rows"], "HostHealthTableV2")
+    helper_headers = {
+        "AF": "Resumo base",
+        "AG": "Resumo orfaos",
+        "AH": "Resumo cache",
+    }
+    helper_headers.update({
+        column: f"Resumo {name}"
+        for name, column in process_summary_columns.items()
+    })
+    for column, header in helper_headers.items():
+        host_health[f"{column}4"] = header
+        host_health.column_dimensions[column].hidden = True
 
     process_last = 4 + max(len(rows["process_config_rows"]), 1)
     cache_last = 4 + max(len(rows["cache_config_rows"]), 1)
     first = 5
     last = 4 + len(rows["host_rows"])
     for r in range(first, last + 1):
-        host_health[f"AB{r}"] = f'=COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{r},\'Process vs Config\'!$C$5:$C${process_last},"Avaliar aumento")+COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{r},\'Cache vs Config\'!$H$5:$H${cache_last},"Avaliar ajuste")'
+        host_health[f"AB{r}"] = f'=COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{r},\'Process vs Config\'!$C$5:$C${process_last},"Avaliar aumento")+COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{r},\'Cache vs Config\'!$J$5:$J${cache_last},"Avaliar ajuste")'
         host_health[f"AC{r}"] = f'=MAX(0,100-IF(Y{r}>0,50,0)-IF(X{r}>0,20,0)-IF(Config!$B$17="Sim",IF(AA{r}>0,50,0)+IF(Z{r}>0,20,0),0)-IF(Config!$B$21="Sim",IF(AB{r}>0,15,0),0)-IF(F{r}<Config!$B$6,15,0)-IF(L{r}>Config!$B$7,15,0)-IF(M{r}>Config!$B$8,10,0)-IF(P{r}>Config!$B$9,10,0)-IF(Q{r}>Config!$B$10,10,0)-IF(S{r}>Config!$B$11,10,0)-IF(T{r}>Config!$B$12,10,0)-IF(V{r}>Config!$B$13,10,0)-IF(W{r}>Config!$B$14,10,0)-IF(N{r}>Config!$B$15,10,0)-IF(O{r}>Config!$B$16,10,0))'
         host_health[f"AD{r}"] = f'=IF(AC{r}>=Config!$B$18,"OK",IF(AC{r}>=Config!$B$19,"Atencao",IF(AC{r}>=Config!$B$20,"Risco","Critico")))'
-        host_health[f"AE{r}"] = f'=IF(AND(AC{r}=100,{process_recommendation_count_formula(r, process_last)}=0),"Proxy dentro dos parametros configurados",IF(Y{r}>0,"Alerta Disaster ativo; ","")&IF(X{r}>0,"Alerta de saude do proxy ativo; ","")&IF(Config!$B$17="Sim",IF(AA{r}>0,"Alerta Disaster orfao considerado; ","")&IF(Z{r}>0,"Alerta de saude orfao considerado; ",""),"")&{config_score_details_formula(r, cache_last)}&{process_recommendation_details_formula(r, process_last)}&IF(F{r}<Config!$B$6,"Versao abaixo do corte; ","")&IF(L{r}>Config!$B$7,"Itens unsupported acima do limite; ","")&IF(M{r}>Config!$B$8,"VPS atual acima do limite; ","")&IF(P{r}>Config!$B$9,"CPU atual alta; ","")&IF(Q{r}>Config!$B$10,"CPU media 30d alta; ","")&IF(S{r}>Config!$B$11,"Memoria atual alta; ","")&IF(T{r}>Config!$B$12,"Memoria media 30d alta; ","")&IF(V{r}>Config!$B$13,"Disco atual alto; ","")&IF(W{r}>Config!$B$14,"Disco media 30d alta; ","")&IF(N{r}>Config!$B$15,"Fila 10m acima do limite; ","")&IF(O{r}>Config!$B$16,"Preprocessing queue acima do limite; ",""))'
+        host_health[f"AF{r}"] = f'=IF(Y{r}>0,"Alerta Disaster ativo; ","")&IF(X{r}>0,"Alerta de saude do proxy ativo; ","")&IF(F{r}<Config!$B$6,"Versao abaixo do corte; ","")&IF(L{r}>Config!$B$7,"Itens unsupported acima do limite; ","")&IF(M{r}>Config!$B$8,"VPS atual acima do limite; ","")&IF(P{r}>Config!$B$9,"CPU atual alta; ","")&IF(Q{r}>Config!$B$10,"CPU media 30d alta; ","")&IF(S{r}>Config!$B$11,"Memoria atual alta; ","")&IF(T{r}>Config!$B$12,"Memoria media 30d alta; ","")&IF(V{r}>Config!$B$13,"Disco atual alto; ","")&IF(W{r}>Config!$B$14,"Disco media 30d alta; ","")&IF(N{r}>Config!$B$15,"Fila 10m acima do limite; ","")&IF(O{r}>Config!$B$16,"Preprocessing queue acima do limite; ","")'
+        host_health[f"AG{r}"] = f'=IF(Config!$B$17="Sim",IF(AA{r}>0,"Alerta Disaster orfao considerado; ","")&IF(Z{r}>0,"Alerta de saude orfao considerado; ",""),"")'
+        cache_parts = [
+            f'IF(COUNTIFS(\'Cache vs Config\'!$A$5:$A${cache_last},C{r},\'Cache vs Config\'!$B$5:$B${cache_last},"{cache_name}",\'Cache vs Config\'!$J$5:$J${cache_last},"Avaliar ajuste")>0,"{cache_name} acima do threshold de caches; ","")'
+            for cache_name in dict.fromkeys(cache_name for cache_name, *_rest in CACHE_CONFIG_MAP)
+        ]
+        host_health[f"AH{r}"] = f'=IF(Config!$B$21="Sim",{"&".join(cache_parts)},"")'
+        for process_name, column in process_summary_columns.items():
+            host_health[f"{column}{r}"] = f'=IF(Config!$B$24="Sim",IF(COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{r},\'Process vs Config\'!$B$5:$B${process_last},"{process_name}",\'Process vs Config\'!$C$5:$C${process_last},"Avaliar aumento")>0,"{process_name}: aumentar pollers; ","")&IF(COUNTIFS(\'Process vs Config\'!$A$5:$A${process_last},C{r},\'Process vs Config\'!$B$5:$B${process_last},"{process_name}",\'Process vs Config\'!$C$5:$C${process_last},"Avaliar diminuicao")>0,"{process_name}: diminuir pollers; ",""),"")'
+        summary_cells = ["AF", "AG", "AH", *process_summary_columns.values()]
+        summary_join = "&".join(f"{column}{r}" for column in summary_cells)
+        host_health[f"AE{r}"] = f'=IF({summary_join}="","Proxy dentro dos parametros configurados",{summary_join})'
 
-    for idx, _ in enumerate(rows["host_rows"], 5):
+    for idx, _host_row in enumerate(rows["host_rows"], 5):
         overview.append([
             f"='Host Health'!C{idx}",
             f"='Host Health'!AD{idx}",
@@ -868,11 +1063,11 @@ def build_workbook(data, output_xlsx):
         process_config[f"C{r}"] = f'=IF(G{r}="","Sem mapeamento",IF(AND(E{r}=0,F{r}=0,G{r}>1),"Avaliar diminuicao",IF(OR(E{r}>Config!$B$22,F{r}>Config!$B$22),"Avaliar aumento",IF(AND(H{r}<>"",G{r}>H{r},F{r}<50),"Avaliar diminuicao","OK"))))'
         process_config[f"D{r}"] = f'=IF(C{r}="Avaliar aumento","Aumentar numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")",IF(C{r}="Avaliar diminuicao",IF(AND(E{r}=0,F{r}=0,G{r}>1),"Diminuir numero de pollers para 1 (sem uso atual ou media 30d; configurado="&G{r}&")","Diminuir numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")"),""))'
 
-    cache_config = add_sheet(wb, "Cache vs Config", "Compara uso dos caches do proxy com parametros coletados.", "K")
-    write_table(cache_config, 4, rows["cache_config_rows"] or [{"Host": "", "Cache": "", "Cache key": "", "Uso atual %": None, "Uso media 30d %": None, "Parametro config": "", "Valor configurado": None, "Status": "", "Acao sugerida": "", "Ultima coleta cache": None, "Ultima coleta config": None}], "CacheVsConfigV1")
+    cache_config = add_sheet(wb, "Cache vs Config", "Compara uso dos caches do proxy com parametros coletados.", "M")
+    write_table(cache_config, 4, rows["cache_config_rows"] or [{"Host": "", "Cache": "", "Cache key": "", "Uso atual %": None, "Uso media 30d %": None, "Parametro config": "", "Valor configurado": None, "Valor configurado bytes": None, "Valor recomendado bytes": None, "Status": "", "Acao sugerida": "", "Ultima coleta cache": None, "Ultima coleta config": None}], "CacheVsConfigV1")
     for r in range(5, 5 + max(len(rows["cache_config_rows"]), 1)):
-        cache_config[f"H{r}"] = f'=IF(OR(D{r}>Config!$B$23,E{r}>Config!$B$23),"Avaliar ajuste","OK")'
-        cache_config[f"I{r}"] = f'=IF(H{r}="Avaliar ajuste",IF(F{r}="","Cache acima do threshold; parametro nao mapeado no template de configuracao","Avaliar ajuste de "&F{r}&" (configurado="&G{r}&")"),"Dentro dos limites configurados")'
+        cache_config[f"J{r}"] = f'=IF(OR(D{r}>Config!$B$23,E{r}>Config!$B$23),"Avaliar ajuste","OK")'
+        cache_config[f"K{r}"] = f'=IF(J{r}="Avaliar ajuste",IF(F{r}="","Cache acima do threshold; parametro nao mapeado no template de configuracao",IF(I{r}<>"","Avaliar ajuste de "&F{r}&" (configurado="&G{r}&"; recomendado bytes="&I{r}&")","Avaliar ajuste de "&F{r}&" (configurado="&G{r}&")")),"Dentro dos limites configurados")'
 
     methodology = add_sheet(wb, "Methodology", "Score focado na saude do proxy, nao na quantidade bruta de problemas dos hosts monitorados por ele.", "D")
     methodology_rows = [
@@ -956,6 +1151,11 @@ def build_workbook(data, output_xlsx):
                 cell.font = Font(name="Aptos", size=10, bold=cell.font.bold, color=cell.font.color)
                 cell.alignment = Alignment(vertical="top", wrap_text=False)
     apply_readability_layout(wb)
+    if hasattr(wb, "calculation"):
+        wb.calculation.calcMode = "auto"
+        wb.calculation.calcId = 0
+        wb.calculation.fullCalcOnLoad = True
+        wb.calculation.forceFullCalc = True
 
     output_xlsx.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_xlsx)
@@ -971,7 +1171,7 @@ def validate_xlsx(path):
             for name in archive.namelist()
             if name.startswith("xl/worksheets/sheet")
         )
-        markers = ["#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "TEXTJOIN"]
+        markers = ["#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A"]
         found = [marker for marker in markers if marker in worksheet_xml]
         if found:
             raise RuntimeError(f"Formula error markers found in XLSX: {found}")
@@ -982,6 +1182,9 @@ def main():
     parser.add_argument("--api-url", required=True, help="Base Zabbix URL or full api_jsonrpc.php URL.")
     parser.add_argument("--token", required=True)
     parser.add_argument("--host-group", default="Zabbix/Proxies", help="Host group containing the proxy hosts. Default: Zabbix/Proxies.")
+    parser.add_argument("--template-id", help="Optional template ID used as an additional host filter.")
+    parser.add_argument("--input-json", help="Optional previously collected JSON to rebuild the workbook without API collection.")
+    parser.add_argument("--exclude-host", action="append", default=[], help="Host technical name or visible name to exclude. Can be used more than once.")
     parser.add_argument("--output-xlsx", required=True)
     parser.add_argument("--output-json", help="Optional intermediate JSON path.")
     parser.add_argument("--skip-disk", action="store_true")
@@ -995,24 +1198,37 @@ def main():
     print("Zabbix Proxy Health Assessment v3.0 standalone")
     print(f"zabbix_url={zabbix_url}")
     print(f"host_group={args.host_group}")
+    if args.template_id:
+        print(f"template_id={args.template_id}")
     print(f"output_xlsx={output_xlsx}")
 
-    print("Connecting with zabbix_utils.ZabbixAPI...")
-    api = connect_zabbix(zabbix_url, args.token)
+    if args.input_json:
+        input_json = Path(args.input_json).resolve()
+        print(f"Loading collected data from {input_json}")
+        data = json.loads(input_json.read_text(encoding="utf-8"))
+        print(f"hosts={len(data.get('hosts', []))} items={len(data.get('items', []))} problems={len(data.get('problems', []))}")
+    else:
+        print("Connecting with zabbix_utils.ZabbixAPI...")
+        api = connect_zabbix(zabbix_url, args.token)
 
-    print("Collecting proxy health data...")
-    data = collect_base(api, zabbix_url, args.host_group)
-    print(f"hosts={len(data['hosts'])} items={len(data['items'])} problems={len(data['problems'])}")
+        print("Collecting proxy health data...")
+        data = collect_base(api, zabbix_url, args.host_group, args.template_id)
+        print(f"hosts={len(data['hosts'])} items={len(data['items'])} problems={len(data['problems'])}")
 
-    print("Collecting proxy configuration data...")
-    collect_proxy_config(api, data)
-    print(f"config_items={len(data.get('proxy_config_items', []))}")
+        print("Collecting proxy configuration data...")
+        collect_proxy_config(api, data)
+        print(f"config_items={len(data.get('proxy_config_items', []))}")
 
-    if not args.skip_disk:
-        print("Collecting disk fallback data...")
-        enrich_disk_metrics(api, data)
-        disk_count = len([item for item in data["items"] if item.get("key_") == "vfs.fs.size[/,pused]"])
-        print(f"disk_selected_hosts={disk_count}")
+        if not args.skip_disk:
+            print("Collecting disk fallback data...")
+            enrich_disk_metrics(api, data)
+            disk_count = len([item for item in data["items"] if item.get("key_") == "vfs.fs.size[/,pused]"])
+            print(f"disk_selected_hosts={disk_count}")
+
+    removed = filter_data_hosts(data, args.exclude_host)
+    if removed:
+        print("excluded_hosts=" + ", ".join(host.get("name") or host.get("host") for host in removed))
+        print(f"hosts_after_exclusion={len(data.get('hosts', []))}")
 
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_json.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

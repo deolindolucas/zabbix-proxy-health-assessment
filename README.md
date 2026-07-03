@@ -55,6 +55,9 @@ O script normaliza automaticamente para a URL base usada pela biblioteca oficial
 | `--api-url` | Sim | URL base do Zabbix ou URL completa `api_jsonrpc.php`. |
 | `--token` | Sim | Token de API do Zabbix. |
 | `--host-group` | Nao | Host Group que contem os proxies. Padrao: `Zabbix/Proxies`. |
+| `--template-id` | Nao | Filtro complementar por template ID. Use quando o host group do ambiente ainda contem hosts que nao sao proxies. |
+| `--input-json` | Nao | Regera a planilha a partir de um JSON ja coletado, sem nova consulta ao Zabbix. |
+| `--exclude-host` | Nao | Remove um host pelo nome tecnico ou visivel. Pode ser informado mais de uma vez. |
 | `--output-xlsx` | Sim | Caminho do arquivo `.xlsx` final. |
 | `--output-json` | Nao | Caminho opcional para salvar o JSON intermediario. Por padrao fica ao lado do XLSX. |
 | `--skip-disk` | Nao | Ignora a etapa complementar de descoberta de disco. |
@@ -113,6 +116,8 @@ Colunas importantes:
 
 Quando a avaliacao de configuracao esta ligada, caches acima do threshold entram no score e no resumo. As recomendacoes de `Process vs Config` podem aparecer no resumo por meio de `Mostrar recomendacoes Process vs Config no resumo?`, mas essa opcao nao altera o score.
 
+O resumo do proxy e recalculavel no Excel, mas evita funcoes modernas como `TEXTJOIN` e `FILTER` para manter compatibilidade com ambientes em portugues e instalacoes do Excel que removem essas formulas ao abrir o arquivo. A formula final usa colunas auxiliares ocultas e apenas funcoes mais basicas, como `IF`, `COUNTIFS` e concatenacao com `&`.
+
 ```text
 Configuration cache acima do threshold de caches;
 http poller: diminuir pollers;
@@ -144,16 +149,26 @@ Exemplos de mapeamento:
 | Processo Zabbix | Parametro de configuracao |
 |---|---|
 | `agent poller` | `num.StartAgentPollers` |
+| `browser poller` | `num.StartBrowserPollers` |
 | `snmp poller` | `num.StartSNMPPollers` |
 | `http poller` | `num.StartHTTPPollers` |
 | `http agent poller` | `num.StartHTTPAgentPollers` |
 | `icmp pinger` | `num.StartPingers` |
+| `discovery worker` | `num.StartDiscoverers` |
+| `preprocessing worker` | `num.StartPreprocessors` |
 | `trapper` | `num.StartTrappers` |
 | `unreachable poller` | `num.StartPollersUnreachable` |
 | `history syncer` | `num.StartDBSyncers` |
 | `odbc poller` | `num.StartODBCPollers` |
 | `ipmi poller` | `num.StartIPMIPollers` |
 | `java poller` | `num.StartJavaPollers` |
+| `vmware collector` | `num.StartVMwareCollectors` |
+
+No Zabbix 7.0+, processos de discovery e preprocessing sao avaliados pelos workers:
+
+- `discovery worker` usa recomendacao conservadora: mantem o configurado e recomenda apenas `+1` quando a media do busy chega a 100%.
+- `preprocessing worker` usa `StartPreprocessors` e a recomendacao padrao baseada em carga desejada.
+- Managers como `discovery manager` e `preprocessing manager` aparecem nas leituras, mas nao entram como parametros configuraveis de quantidade recomendada.
 
 Importante: o script nao divide o busy pela quantidade de pollers.
 
@@ -211,6 +226,16 @@ OU Uso media 30d % > Threshold caches
 Por padrao, `Threshold caches = 75%`.
 
 Quando existem as duas formas para o mesmo cache, o script prefere a metrica `pused` e usa `pfree` apenas como fallback.
+
+Quando existem itens de configuracao em string, como `8M`, `4M` ou `1G`, o script converte o valor para bytes para permitir calculo numerico. Se o template ja trouxer itens `.bytes` e `num.recomendado.*` de cache, eles sao usados quando validos; se vierem vazios ou zerados, o script recalcula localmente.
+
+Formula de recomendacao de cache:
+
+```text
+ceil((cache_configurado_bytes * (uso_percentual / 100)) / 0.60)
+```
+
+O valor `0.60` reflete a carga desejada default de 60%. Nao ha folga adicional para caches.
 
 ### Process 30d
 
