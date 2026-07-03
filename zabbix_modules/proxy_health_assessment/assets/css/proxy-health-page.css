@@ -325,61 +325,57 @@
 .proxy-health-config-form {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 12px;
+    gap: 18px;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 22px 12px;
     border: 1px solid var(--ph-border);
-    border-radius: 6px;
-    background: var(--ph-panel);
+    border-radius: 0;
+    background: transparent;
 }
 
 .proxy-health-config-block {
     display: grid;
-    gap: 10px;
-    padding: 12px;
-    border: 1px solid var(--ph-border);
-    border-radius: 6px;
-    background: rgba(128, 144, 160, .05);
-}
-
-.proxy-health-config-block-toggle {
-    display: flex;
     gap: 8px;
-    align-items: center;
+    padding: 0;
 }
 
-.proxy-health-config-block-toggle h3 {
-    margin: 0;
-}
-
-.proxy-health-config-grid {
+.proxy-health-config-list {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: 10px;
+    gap: 9px;
 }
 
 .proxy-health-config-field {
     display: grid;
-    gap: 5px;
+    grid-template-columns: minmax(220px, 1fr) 170px;
+    gap: 10px;
+    align-items: center;
 }
 
 .proxy-health-config-form label {
-    font-weight: 700;
+    justify-self: end;
+    text-align: right;
+    font-weight: 400;
     font-size: 12px;
 }
 
 .proxy-health-config-form input,
 .proxy-health-config-form select {
     width: 100%;
-    min-height: 32px;
+    min-height: 28px;
 }
 
-.proxy-health-config-block-toggle input[type="checkbox"] {
+.proxy-health-config-form input[type="checkbox"] {
     width: auto;
     min-height: auto;
+    justify-self: start;
 }
 
 .proxy-health-form-title {
-    margin: 0;
+    margin: 0 0 4px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 400;
 }
 
 .proxy-health-error {
@@ -402,5 +398,18 @@
 
     .proxy-health-search {
         grid-template-columns: 1fr;
+    }
+
+    .proxy-health-config-form {
+        max-width: none;
+    }
+
+    .proxy-health-config-field {
+        grid-template-columns: 1fr;
+    }
+
+    .proxy-health-config-form label {
+        justify-self: start;
+        text-align: left;
     }
 }

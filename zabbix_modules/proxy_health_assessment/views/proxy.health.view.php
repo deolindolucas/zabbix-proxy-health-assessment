@@ -34,12 +34,14 @@ $checkbox = static function(string $label, string $name, string $value) use ($fi
 };
 
 $block = static function(string $title, array $fields, $toggle = null): CDiv {
-    $heading = $toggle === null
-        ? (new CTag('h3', true, $title))->addClass('proxy-health-form-title')
-        : (new CDiv([$toggle, (new CTag('h3', true, $title))->addClass('proxy-health-form-title')]))
-            ->addClass('proxy-health-config-block-toggle');
+    if ($toggle !== null) {
+        array_unshift($fields, $toggle);
+    }
 
-    return (new CDiv([$heading, (new CDiv($fields))->addClass('proxy-health-config-grid')]))
+    return (new CDiv([
+        (new CTag('h3', true, $title))->addClass('proxy-health-form-title'),
+        (new CDiv($fields))->addClass('proxy-health-config-list')
+    ]))
         ->addClass('proxy-health-config-block');
 };
 
@@ -76,20 +78,20 @@ $config_form = (new CForm('get'))
         (new CSubmit('apply', _('Aplicar')))->addClass(ZBX_STYLE_BTN_ALT)
     ]);
 
-$overview = (new CDiv([
-    (new CDiv([
-        (new CTag('button', true, _('Overview')))
-            ->addClass('proxy-health-tab is-selected')
-            ->setAttribute('type', 'button')
-            ->setAttribute('data-proxy-tab', 'overview')
-            ->setAttribute('aria-pressed', 'true'),
-        (new CTag('button', true, _('Configuracao')))
-            ->addClass('proxy-health-tab')
-            ->setAttribute('type', 'button')
-            ->setAttribute('data-proxy-tab', 'config')
-            ->setAttribute('aria-pressed', 'false')
-    ]))->addClass('proxy-health-tabs'),
+$tabs = (new CDiv([
+    (new CTag('button', true, _('Overview')))
+        ->addClass('proxy-health-tab is-selected')
+        ->setAttribute('type', 'button')
+        ->setAttribute('data-proxy-tab', 'overview')
+        ->setAttribute('aria-pressed', 'true'),
+    (new CTag('button', true, _('Configuracao')))
+        ->addClass('proxy-health-tab')
+        ->setAttribute('type', 'button')
+        ->setAttribute('data-proxy-tab', 'config')
+        ->setAttribute('aria-pressed', 'false')
+]))->addClass('proxy-health-tabs');
 
+$overview = (new CDiv([
     (new CDiv([
         (new CDiv([
             (new CTag('h2', true, _('Saude dos proxies')))->addClass('proxy-health-title'),
@@ -151,7 +153,7 @@ $config = (new CDiv([
 ]))->addClass('proxy-health-pane')->setAttribute('data-proxy-pane', 'config');
 
 $page->addItem(
-    (new CDiv([$overview, $config]))
+    (new CDiv([$tabs, $overview, $config]))
         ->setId('proxy-health-assessment')
         ->addClass('proxy-health')
         ->setAttribute('data-proxy-health-payload', $data['payload'])
