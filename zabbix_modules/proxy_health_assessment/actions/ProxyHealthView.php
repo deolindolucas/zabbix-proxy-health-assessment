@@ -16,14 +16,16 @@ class ProxyHealthView extends CController {
     private const PROCESS_PREFIX = 'zabbix[process,';
     private const IMPORTANT_KEYS = [
         'agent.ping', 'system.cpu.load[all,avg1]', 'system.cpu.num', 'system.cpu.util',
-        'system.uptime', 'vm.memory.size[pavailable]', 'vm.memory.size[pused]',
+        'system.uptime', 'vm.memory.size[total]', 'vm.memory.size[pavailable]', 'vm.memory.size[pused]',
         'vm.memory.utilization', 'proc.num[zabbix_proxy]', 'zabbix[uptime]',
         'zabbix[version]', 'zabbix[hosts]', 'zabbix[items]', 'zabbix[items_unsupported]',
         'zabbix[requiredperformance]', 'zabbix[preprocessing_queue]', 'zabbix[queue,10m]',
         'zabbix[proxy,{HOST.HOST}, lastaccess]', 'zabbix[proxy_buffer,state,current]',
         'zabbix[proxy_buffer,state,changes]', 'zabbix[proxy_buffer,buffer,pused]',
-        'zabbix[rcache,buffer,pfree]', 'zabbix[wcache,history,pfree]',
-        'zabbix[wcache,index,pused]', 'zabbix[vmware,buffer,pused]', 'zabbix[wcache,values]',
+        'zabbix[rcache,buffer,pfree]', 'zabbix[rcache,buffer,pused]',
+        'zabbix[wcache,history,pfree]', 'zabbix[wcache,history,pused]',
+        'zabbix[wcache,index,pused]', 'zabbix[vmware,buffer,pused]', 'zabbix[proxy_history]',
+        'zabbix[queue]', 'zabbix[discovery_queue]', 'zabbix[wcache,values]',
         'zabbix[wcache,values,float]', 'zabbix[wcache,values,uint]',
         'zabbix[wcache,values,str]', 'zabbix[wcache,values,text]',
         'zabbix[wcache,values,log]', 'zabbix[wcache,values,not supported]'
@@ -54,11 +56,11 @@ class ProxyHealthView extends CController {
         'unreachable poller' => 'num.recomendado.unreachable'
     ];
     private const CACHE_CONFIG_MAP = [
-        'zabbix[rcache,buffer,pfree]' => ['Configuration cache', 'num.CacheSize', 'pfree'],
-        'zabbix[wcache,history,pfree]' => ['History write cache', '', 'pfree'],
-        'zabbix[wcache,index,pused]' => ['History index cache', '', 'pused'],
-        'zabbix[proxy_buffer,buffer,pused]' => ['Proxy memory buffer', '', 'pused'],
-        'zabbix[vmware,buffer,pused]' => ['VMware cache', '', 'pused']
+        ['Configuration cache', 'num.CacheSize', [['zabbix[rcache,buffer,pused]', 'pused'], ['zabbix[rcache,buffer,pfree]', 'pfree']]],
+        ['History write cache', '', [['zabbix[wcache,history,pused]', 'pused'], ['zabbix[wcache,history,pfree]', 'pfree']]],
+        ['History index cache', '', [['zabbix[wcache,index,pused]', 'pused']]],
+        ['Proxy memory buffer', '', [['zabbix[proxy_buffer,buffer,pused]', 'pused']]],
+        ['VMware cache', 'num.VMwareCacheSize', [['zabbix[vmware,buffer,pused]', 'pused']]]
     ];
 
     protected function init(): void {
@@ -73,8 +75,6 @@ class ProxyHealthView extends CController {
             'patch_min' => 'string',
             'unsupported_max' => 'string',
             'vps_max' => 'string',
-            'process_current_max' => 'string',
-            'process_avg_max' => 'string',
             'cpu_current_max' => 'string',
             'cpu_avg_max' => 'string',
             'memory_current_max' => 'string',
@@ -86,6 +86,7 @@ class ProxyHealthView extends CController {
             'lastaccess_max' => 'string',
             'consider_orphans' => 'in Sim,Nao',
             'consider_config' => 'in Sim,Nao',
+            'show_process_recommendations' => 'in Sim,Nao',
             'poller_threshold' => 'string',
             'cache_threshold' => 'string',
             'proxy_search' => 'string'
@@ -149,8 +150,6 @@ class ProxyHealthView extends CController {
             'patch_min' => $this->inputNum('patch_min', 20),
             'unsupported_max' => $this->inputNum('unsupported_max', 0.02),
             'vps_max' => $this->inputNum('vps_max', 300),
-            'process_current_max' => $this->inputNum('process_current_max', 80),
-            'process_avg_max' => $this->inputNum('process_avg_max', 75),
             'cpu_current_max' => $this->inputNum('cpu_current_max', 85),
             'cpu_avg_max' => $this->inputNum('cpu_avg_max', 75),
             'memory_current_max' => $this->inputNum('memory_current_max', 85),
@@ -162,6 +161,7 @@ class ProxyHealthView extends CController {
             'lastaccess_max' => $this->inputNum('lastaccess_max', 900),
             'consider_orphans' => $this->getInput('consider_orphans', 'Nao'),
             'consider_config' => $this->getInput('consider_config', 'Nao'),
+            'show_process_recommendations' => $this->getInput('show_process_recommendations', 'Sim'),
             'poller_threshold' => $this->inputNum('poller_threshold', 75),
             'cache_threshold' => $this->inputNum('cache_threshold', 75),
             'score_ok' => 90,
@@ -193,6 +193,16 @@ class ProxyHealthView extends CController {
             ];
         }
 
+        $template_items = API::Item()->get([
+            'output' => ['key_', 'status'],
+            'templateids' => [$settings['proxy_template_id']],
+            'sortfield' => 'name'
+        ]);
+        $proxy_template_keys = array_values(array_unique(array_column(
+            array_filter($template_items, static fn(array $item): bool => ($item['status'] ?? '0') === '0'),
+            'key_'
+        )));
+
         $items = API::Item()->get([
             'output' => ['itemid', 'hostid', 'name', 'key_', 'lastvalue', 'lastclock',
                 'value_type', 'units', 'status', 'state', 'error'],
@@ -202,6 +212,7 @@ class ProxyHealthView extends CController {
         ]);
         $items = array_values(array_filter($items, static fn(array $item): bool =>
             in_array($item['key_'], self::IMPORTANT_KEYS, true)
+            || in_array($item['key_'], $proxy_template_keys, true)
             || strpos($item['key_'], self::PROCESS_PREFIX) === 0
         ));
 
@@ -282,14 +293,6 @@ class ProxyHealthView extends CController {
         $get = static fn(string $key): ?array => $items[$key] ?? null;
         $value = static fn(string $key) => self::num($items[$key]['lastvalue'] ?? null);
         $avg = static fn(string $key) => isset($items[$key]) ? ($trends[$items[$key]['itemid']]['avg30d'] ?? null) : null;
-        $process_values = [];
-        $process_avg_values = [];
-        foreach ($items as $item) {
-            if (strpos($item['key_'], self::PROCESS_PREFIX) === 0) {
-                $process_values[] = self::num($item['lastvalue'] ?? null);
-                $process_avg_values[] = $trends[$item['itemid']]['avg30d'] ?? null;
-            }
-        }
 
         $version = (string) ($get('zabbix[version]')['lastvalue'] ?? '');
         $total_items = $value('zabbix[items]');
@@ -297,21 +300,26 @@ class ProxyHealthView extends CController {
         $unsupported_pct = $total_items ? $unsupported / $total_items : null;
         $cpu_current = $value('system.cpu.util');
         $cpu_avg = $avg('system.cpu.util');
-        $mem_current = $value('vm.memory.size[pused]');
-        if ($mem_current === null && $value('vm.memory.size[pavailable]') !== null) {
-            $mem_current = 100 - $value('vm.memory.size[pavailable]');
-        }
-        $mem_avg = $avg('vm.memory.size[pused]');
+        $mem_current = $value('vm.memory.size[pused]') ?? $value('vm.memory.utilization');
+        $mem_avg = $avg('vm.memory.size[pused]') ?? $avg('vm.memory.utilization');
         $disk_current = $value('vfs.fs.size[/,pused]');
         $disk_avg = $avg('vfs.fs.size[/,pused]');
         $lastaccess = $value('zabbix[proxy,{HOST.HOST}, lastaccess]');
         $lastaccess_age = $lastaccess !== null ? max(0, $now - (int) $lastaccess) : null;
-        $config_findings = $settings['consider_config'] === 'Sim'
-            ? array_merge(
-                array_column($this->buildProcessRows($host, $items, $cfg_items, $trends, $settings, true), 'finding'),
-                array_column($this->buildCacheRows($host, $items, $cfg_items, $trends, $settings, true), 'finding')
-            )
+        $process_findings = $this->buildProcessRows($host, $items, $cfg_items, $trends, $settings, true);
+        $cache_findings = $this->buildCacheRows($host, $items, $cfg_items, $trends, $settings, true);
+        $score_config_findings = $settings['consider_config'] === 'Sim'
+            ? array_merge(array_column($process_findings, 'finding'), array_column($cache_findings, 'finding'))
             : [];
+        $summary_config_findings = $settings['show_process_recommendations'] === 'Sim'
+            ? array_merge(
+                array_column(array_filter(
+                    $this->buildProcessRows($host, $items, $cfg_items, $trends, $settings),
+                    static fn(array $row): bool => in_array($row['status'], ['Avaliar aumento', 'Avaliar diminuicao'], true)
+                ), 'action'),
+                $settings['consider_config'] === 'Sim' ? array_column($cache_findings, 'finding') : []
+            )
+            : ($settings['consider_config'] === 'Sim' ? array_column($cache_findings, 'finding') : []);
 
         $findings = [];
         $score = 100;
@@ -331,8 +339,6 @@ class ProxyHealthView extends CController {
         $deduct(self::versionPatch($version) !== null && self::versionPatch($version) < $settings['patch_min'], 15, _('Versao abaixo do corte'));
         $deduct($unsupported_pct !== null && $unsupported_pct > $settings['unsupported_max'], 15, _('Itens unsupported acima do limite'));
         $deduct($value('zabbix[wcache,values]') !== null && $value('zabbix[wcache,values]') > $settings['vps_max'], 10, _('VPS atual acima do limite'));
-        $deduct(self::maxNum($process_values) !== null && self::maxNum($process_values) > $settings['process_current_max'], 10, _('Processo busy atual alto'));
-        $deduct(self::maxNum($process_avg_values) !== null && self::maxNum($process_avg_values) > $settings['process_avg_max'], 15, _('Media 30d de processo alta'));
         $deduct($cpu_current !== null && $cpu_current > $settings['cpu_current_max'], 10, _('CPU atual alta'));
         $deduct($cpu_avg !== null && $cpu_avg > $settings['cpu_avg_max'], 10, _('CPU media 30d alta'));
         $deduct($mem_current !== null && $mem_current > $settings['memory_current_max'], 10, _('Memoria atual alta'));
@@ -341,7 +347,13 @@ class ProxyHealthView extends CController {
         $deduct($disk_avg !== null && $disk_avg > $settings['disk_avg_max'], 10, _('Disco media 30d alta'));
         $deduct($value('zabbix[queue,10m]') !== null && $value('zabbix[queue,10m]') > $settings['queue_10m_max'], 10, _('Fila 10m acima do limite'));
         $deduct($value('zabbix[preprocessing_queue]') !== null && $value('zabbix[preprocessing_queue]') > $settings['preproc_queue_max'], 10, _('Preprocessing queue acima do limite'));
-        $deduct($settings['consider_config'] === 'Sim' && $config_findings, 15, implode('; ', $config_findings));
+        $deduct($settings['consider_config'] === 'Sim' && $score_config_findings, 15, implode('; ', $score_config_findings));
+
+        foreach ($summary_config_findings as $finding) {
+            if ($finding !== '') {
+                $findings[] = $finding;
+            }
+        }
 
         $state = $score >= $settings['score_ok']
             ? 'OK'
@@ -362,10 +374,9 @@ class ProxyHealthView extends CController {
             'unsupported' => $unsupported,
             'items' => $total_items,
             'vps_current' => $value('zabbix[wcache,values]'),
-            'process_current_max' => self::maxNum($process_values),
-            'process_avg_max' => self::maxNum($process_avg_values),
             'cpu_current' => $cpu_current,
             'cpu_avg' => $cpu_avg,
+            'memory_total_gb' => self::bytesToGib($value('vm.memory.size[total]')),
             'memory_current' => $mem_current,
             'memory_avg' => $mem_avg,
             'disk_current' => $disk_current,
@@ -391,10 +402,38 @@ class ProxyHealthView extends CController {
             $recommended = self::RECOMMENDED_CONFIG_MAP[$process] ?? '';
             $current = self::num($item['lastvalue'] ?? null);
             $avg = $trends[$item['itemid']]['avg30d'] ?? null;
-            $status = $param === ''
-                ? 'Sem mapeamento'
-                : (($current !== null && $current > $settings['poller_threshold'])
-                    || ($avg !== null && $avg > $settings['poller_threshold']) ? 'Avaliar aumento' : 'OK');
+            $config_value = $param !== '' ? self::num($cfg_items[$param]['lastvalue'] ?? null) : null;
+            $recommended_value = $recommended !== '' ? self::num($cfg_items[$recommended]['lastvalue'] ?? null) : null;
+            if ($param === '') {
+                $status = 'Sem mapeamento';
+            }
+            elseif ($current === 0.0 && $avg === 0.0 && $config_value !== null && $config_value > 1) {
+                $status = 'Avaliar diminuicao';
+                $recommended_value = 1.0;
+            }
+            elseif (($current !== null && $current > $settings['poller_threshold'])
+                    || ($avg !== null && $avg > $settings['poller_threshold'])) {
+                $status = 'Avaliar aumento';
+            }
+            elseif ($recommended_value !== null && $config_value !== null && $config_value > $recommended_value
+                    && $avg !== null && $avg < 50) {
+                $status = 'Avaliar diminuicao';
+            }
+            else {
+                $status = 'OK';
+            }
+            $action = '';
+            if ($status === 'Avaliar aumento') {
+                $action = sprintf(_('Aumentar numero de pollers (configurado=%s, recomendado=%s)'),
+                    self::displayValue($config_value), self::displayValue($recommended_value));
+            }
+            elseif ($status === 'Avaliar diminuicao') {
+                $action = $current === 0.0 && $avg === 0.0 && $config_value !== null && $config_value > 1
+                    ? sprintf(_('Diminuir numero de pollers para 1 (sem uso atual ou media 30d; configurado=%s)'),
+                        self::displayValue($config_value))
+                    : sprintf(_('Diminuir numero de pollers (configurado=%s, recomendado=%s)'),
+                        self::displayValue($config_value), self::displayValue($recommended_value));
+            }
             if ($only_findings && $status !== 'Avaliar aumento') {
                 continue;
             }
@@ -405,11 +444,14 @@ class ProxyHealthView extends CController {
                 'current' => $current,
                 'avg30d' => $avg,
                 'config_param' => $param,
-                'config_value' => $param !== '' ? self::value($cfg_items[$param]['lastvalue'] ?? null) : null,
+                'config_value' => $config_value,
                 'recommended_param' => $recommended,
-                'recommended_value' => $recommended !== '' ? self::value($cfg_items[$recommended]['lastvalue'] ?? null) : null,
+                'recommended_value' => $recommended_value,
                 'status' => $status,
-                'finding' => $status === 'Avaliar aumento' ? $param.' acima do threshold de pollers' : ''
+                'action' => $action,
+                'finding' => $status === 'Avaliar aumento'
+                    ? sprintf(_('%s acima do threshold de pollers'), $process)
+                    : ''
             ];
         }
         return $rows;
@@ -418,13 +460,25 @@ class ProxyHealthView extends CController {
     private function buildCacheRows(array $host, array $items, array $cfg_items, array $trends,
             array $settings, bool $only_findings = false): array {
         $rows = [];
-        foreach (self::CACHE_CONFIG_MAP as $key => $meta) {
-            if (!isset($items[$key])) {
+        foreach (self::CACHE_CONFIG_MAP as $meta) {
+            [$name, $param, $candidates] = $meta;
+            $selected_key = null;
+            $selected_mode = null;
+            $selected_item = null;
+            foreach ($candidates as $candidate) {
+                [$key, $mode] = $candidate;
+                if (isset($items[$key])) {
+                    $selected_key = $key;
+                    $selected_mode = $mode;
+                    $selected_item = $items[$key];
+                    break;
+                }
+            }
+            if ($selected_item === null) {
                 continue;
             }
-            [$name, $param, $mode] = $meta;
-            $current = self::cacheUsed($items[$key]['lastvalue'] ?? null, $mode);
-            $avg = self::cacheUsed($trends[$items[$key]['itemid']]['avg30d'] ?? null, $mode);
+            $current = self::cacheUsed($selected_item['lastvalue'] ?? null, $selected_mode);
+            $avg = self::cacheUsed($trends[$selected_item['itemid']]['avg30d'] ?? null, $selected_mode);
             $status = (($current !== null && $current > $settings['cache_threshold'])
                 || ($avg !== null && $avg > $settings['cache_threshold'])) ? 'Avaliar ajuste' : 'OK';
             if ($only_findings && $status !== 'Avaliar ajuste') {
@@ -433,7 +487,7 @@ class ProxyHealthView extends CController {
             $rows[] = [
                 'host' => $host['name'] ?: $host['host'],
                 'cache' => $name,
-                'key' => $key,
+                'key' => $selected_key,
                 'current' => $current,
                 'avg30d' => $avg,
                 'config_param' => $param,
@@ -680,6 +734,23 @@ class ProxyHealthView extends CController {
     private static function value($value) {
         $num = self::num($value);
         return $num ?? $value;
+    }
+
+    private static function displayValue($value): string {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+        $num = self::num($value);
+        if ($num === null) {
+            return (string) $value;
+        }
+        return abs($num - round($num)) < 0.0001
+            ? (string) (int) round($num)
+            : rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
+    }
+
+    private static function bytesToGib(?float $bytes): ?float {
+        return $bytes !== null ? $bytes / 1024 / 1024 / 1024 : null;
     }
 
     private static function maxNum(array $values): ?float {

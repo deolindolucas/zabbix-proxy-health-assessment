@@ -10,23 +10,37 @@
 $page = (new CHtmlPage())->setTitle(_('Proxy Health Assessment'));
 $settings = $data['settings'];
 
-$input = static function(string $label, string $name, $value, string $type = 'text'): array {
-    return [
+$field = static function($label, $control): CDiv {
+    return (new CDiv([$label, $control]))->addClass('proxy-health-config-field');
+};
+
+$input = static function(string $label, string $name, $value, string $type = 'text') use ($field): CDiv {
+    return $field(
         (new CLabel($label, 'proxy-health-'.$name)),
         (new CTextBox($name, (string) $value))
             ->setId('proxy-health-'.$name)
             ->setAttribute('type', $type)
-    ];
+    );
 };
 
-$select_yes_no = static function(string $label, string $name, string $value): array {
-    return [
+$checkbox = static function(string $label, string $name, string $value) use ($field): CDiv {
+    return $field(
         (new CLabel($label, 'proxy-health-'.$name)),
-        (new CSelect($name))
+        (new CCheckBox($name, 'Sim'))
             ->setId('proxy-health-'.$name)
-            ->setValue($value)
-            ->addOptions(CSelect::createOptionsFromArray(['Nao' => _('Nao'), 'Sim' => _('Sim')]))
-    ];
+            ->setChecked($value === 'Sim')
+            ->setUncheckedValue('Nao')
+    );
+};
+
+$block = static function(string $title, array $fields, $toggle = null): CDiv {
+    $heading = $toggle === null
+        ? (new CTag('h3', true, $title))->addClass('proxy-health-form-title')
+        : (new CDiv([$toggle, (new CTag('h3', true, $title))->addClass('proxy-health-form-title')]))
+            ->addClass('proxy-health-config-block-toggle');
+
+    return (new CDiv([$heading, (new CDiv($fields))->addClass('proxy-health-config-grid')]))
+        ->addClass('proxy-health-config-block');
 };
 
 $config_form = (new CForm('get'))
@@ -34,29 +48,31 @@ $config_form = (new CForm('get'))
     ->addClass('proxy-health-config-form')
     ->addVar('action', $data['action'])
     ->addItem([
-        (new CTag('h3', true, _('Parametros da coleta')))->addClass('proxy-health-form-title'),
-        ...$input(_('Template de proxy'), 'proxy_template_id', $settings['proxy_template_id']),
-        ...$input(_('Template de configuracao'), 'config_template_id', $settings['config_template_id']),
-        ...$input(_('Versao de corte'), 'version_cut', $settings['version_cut']),
-        ...$input(_('Patch minimo'), 'patch_min', $settings['patch_min'], 'number'),
-        ...$input(_('Ultimo acesso maximo (s)'), 'lastaccess_max', $settings['lastaccess_max'], 'number'),
-        (new CTag('h3', true, _('Thresholds do score')))->addClass('proxy-health-form-title'),
-        ...$input(_('Unsupported maximo'), 'unsupported_max', $settings['unsupported_max'], 'number'),
-        ...$input(_('VPS atual maximo'), 'vps_max', $settings['vps_max'], 'number'),
-        ...$input(_('Process busy atual maximo'), 'process_current_max', $settings['process_current_max'], 'number'),
-        ...$input(_('Process busy media 30d maxima'), 'process_avg_max', $settings['process_avg_max'], 'number'),
-        ...$input(_('CPU atual maxima'), 'cpu_current_max', $settings['cpu_current_max'], 'number'),
-        ...$input(_('CPU media 30d maxima'), 'cpu_avg_max', $settings['cpu_avg_max'], 'number'),
-        ...$input(_('Memoria atual maxima'), 'memory_current_max', $settings['memory_current_max'], 'number'),
-        ...$input(_('Memoria media 30d maxima'), 'memory_avg_max', $settings['memory_avg_max'], 'number'),
-        ...$input(_('Disco atual maximo'), 'disk_current_max', $settings['disk_current_max'], 'number'),
-        ...$input(_('Disco media 30d maximo'), 'disk_avg_max', $settings['disk_avg_max'], 'number'),
-        ...$input(_('Fila 10m maxima'), 'queue_10m_max', $settings['queue_10m_max'], 'number'),
-        ...$input(_('Preproc queue maxima'), 'preproc_queue_max', $settings['preproc_queue_max'], 'number'),
-        ...$select_yes_no(_('Considerar problemas orfaos?'), 'consider_orphans', $settings['consider_orphans']),
-        ...$select_yes_no(_('Considerar configuracao do proxy?'), 'consider_config', $settings['consider_config']),
-        ...$input(_('Threshold pollers'), 'poller_threshold', $settings['poller_threshold'], 'number'),
-        ...$input(_('Threshold caches'), 'cache_threshold', $settings['cache_threshold'], 'number'),
+        $block(_('Coleta'), [
+            $input(_('Template de proxy'), 'proxy_template_id', $settings['proxy_template_id']),
+            $input(_('Template de configuracao'), 'config_template_id', $settings['config_template_id']),
+            $input(_('Versao de corte'), 'version_cut', $settings['version_cut']),
+            $input(_('Patch minimo'), 'patch_min', $settings['patch_min'], 'number'),
+            $input(_('Ultimo acesso maximo (s)'), 'lastaccess_max', $settings['lastaccess_max'], 'number')
+        ]),
+        $block(_('Thresholds principais do score'), [
+            $input(_('Unsupported maximo'), 'unsupported_max', $settings['unsupported_max'], 'number'),
+            $input(_('VPS atual maximo'), 'vps_max', $settings['vps_max'], 'number'),
+            $input(_('CPU atual maxima'), 'cpu_current_max', $settings['cpu_current_max'], 'number'),
+            $input(_('CPU media 30d maxima'), 'cpu_avg_max', $settings['cpu_avg_max'], 'number'),
+            $input(_('Memoria atual maxima'), 'memory_current_max', $settings['memory_current_max'], 'number'),
+            $input(_('Memoria media 30d maxima'), 'memory_avg_max', $settings['memory_avg_max'], 'number'),
+            $input(_('Disco atual maximo'), 'disk_current_max', $settings['disk_current_max'], 'number'),
+            $input(_('Disco media 30d maximo'), 'disk_avg_max', $settings['disk_avg_max'], 'number'),
+            $input(_('Fila 10m maxima'), 'queue_10m_max', $settings['queue_10m_max'], 'number'),
+            $input(_('Preproc queue maxima'), 'preproc_queue_max', $settings['preproc_queue_max'], 'number')
+        ]),
+        $block(_('Problemas orfaos'), [], $checkbox(_('Usar este bloco no assessment'), 'consider_orphans', $settings['consider_orphans'])),
+        $block(_('Configuracao do proxy no score'), [
+            $input(_('Threshold pollers'), 'poller_threshold', $settings['poller_threshold'], 'number'),
+            $input(_('Threshold caches'), 'cache_threshold', $settings['cache_threshold'], 'number')
+        ], $checkbox(_('Usar este bloco no assessment'), 'consider_config', $settings['consider_config'])),
+        $block(_('Recomendacoes Process vs Config no resumo'), [], $checkbox(_('Mostrar no resumo sem alterar o score'), 'show_process_recommendations', $settings['show_process_recommendations'])),
         (new CSubmit('apply', _('Aplicar')))->addClass(ZBX_STYLE_BTN_ALT)
     ]);
 
@@ -77,7 +93,7 @@ $overview = (new CDiv([
     (new CDiv([
         (new CDiv([
             (new CTag('h2', true, _('Saude dos proxies')))->addClass('proxy-health-title'),
-            (new CDiv(_('Assessment v2.0 em tempo real, com proxies offline fora do escopo.')))
+            (new CDiv(_('Assessment v3.0 em tempo real, com proxies offline fora do escopo.')))
                 ->addClass('proxy-health-muted')
         ]))->addClass('proxy-health-heading'),
         (new CDiv([
@@ -118,9 +134,10 @@ $overview = (new CDiv([
                 new CTag('th', true, _('Versao')),
                 new CTag('th', true, _('VPS atual')),
                 new CTag('th', true, _('Unsupported %')),
-                new CTag('th', true, _('Proc max')),
                 new CTag('th', true, _('CPU atual')),
+                new CTag('th', true, _('Mem total GB')),
                 new CTag('th', true, _('Mem atual')),
+                new CTag('th', true, _('Mem media')),
                 new CTag('th', true, _('Disco atual')),
                 new CTag('th', true, _('Resumo'))
             ]))),

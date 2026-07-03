@@ -46,8 +46,7 @@
 
 .proxy-health-topbar,
 .proxy-health-kpis,
-.proxy-health-cards,
-.proxy-health-config-form {
+.proxy-health-cards {
     display: grid;
     gap: 10px;
 }
@@ -324,12 +323,43 @@
 }
 
 .proxy-health-config-form {
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    align-items: end;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     padding: 12px;
     border: 1px solid var(--ph-border);
     border-radius: 6px;
     background: var(--ph-panel);
+}
+
+.proxy-health-config-block {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--ph-border);
+    border-radius: 6px;
+    background: rgba(128, 144, 160, .05);
+}
+
+.proxy-health-config-block-toggle {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.proxy-health-config-block-toggle h3 {
+    margin: 0;
+}
+
+.proxy-health-config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 10px;
+}
+
+.proxy-health-config-field {
+    display: grid;
+    gap: 5px;
 }
 
 .proxy-health-config-form label {
@@ -343,9 +373,13 @@
     min-height: 32px;
 }
 
+.proxy-health-config-block-toggle input[type="checkbox"] {
+    width: auto;
+    min-height: auto;
+}
+
 .proxy-health-form-title {
-    grid-column: 1 / -1;
-    margin-top: 6px;
+    margin: 0;
 }
 
 .proxy-health-error {

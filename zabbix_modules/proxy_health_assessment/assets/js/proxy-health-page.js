@@ -127,15 +127,14 @@
 
                 const meta = document.createElement('div');
                 meta.className = 'proxy-health-card-meta';
-                meta.textContent = `Versao ${proxy.version || '—'} · VPS ${fmt(proxy.vps_current, 0)}`;
+                meta.textContent = `Versao ${proxy.version || '—'} · VPS ${fmt(proxy.vps_current, 0)} · Mem ${fmt(proxy.memory_total_gb, 1, ' GB')}`;
 
                 const bars = document.createElement('div');
                 bars.className = 'proxy-health-bars';
                 [
                     ['CPU', proxy.cpu_current],
                     ['Memoria', proxy.memory_current],
-                    ['Disco', proxy.disk_current],
-                    ['Processos', proxy.process_current_max]
+                    ['Disco', proxy.disk_current]
                 ].forEach(([label, value]) => bars.append(this.bar(label, value)));
 
                 const summary = document.createElement('p');
@@ -169,12 +168,12 @@
                         .map((row) => [row.name, row.key, row.value ?? '—', row.lastclock || '—', row.state])
                 ),
                 this.detailTable('Processos versus configuracao',
-                    ['Processo', 'Busy atual', 'Media 30d', 'Parametro', 'Configurado', 'Status'],
+                    ['Processo', 'Status', 'Acao sugerida', 'Busy atual', 'Media 30d', 'Configurado', 'Recomendado'],
                     this.data.process_config
                         .filter((row) => row.host === host)
                         .map((row) => [
-                            row.process, fmt(row.current, 1, '%'), fmt(row.avg30d, 1, '%'),
-                            row.config_param || '—', row.config_value ?? '—', row.status
+                            row.process, row.status, row.action || '—', fmt(row.current, 1, '%'),
+                            fmt(row.avg30d, 1, '%'), row.config_value ?? '—', row.recommended_value ?? '—'
                         ])
                 ),
                 this.detailTable('Caches versus configuracao',
@@ -254,9 +253,10 @@
                 proxy.version || '—',
                 fmt(proxy.vps_current, 0),
                 pct(proxy.unsupported_pct),
-                fmt(proxy.process_current_max, 1, '%'),
                 fmt(proxy.cpu_current, 1, '%'),
+                fmt(proxy.memory_total_gb, 1, ' GB'),
                 fmt(proxy.memory_current, 1, '%'),
+                fmt(proxy.memory_avg, 1, '%'),
                 fmt(proxy.disk_current, 1, '%'),
                 proxy.summary
             ]);
