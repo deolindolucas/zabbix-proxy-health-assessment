@@ -160,6 +160,23 @@
         details(host) {
             const wrapper = document.createElement('div');
             wrapper.className = 'proxy-health-card-details';
+            const processConfig = this.data.process_config.filter((row) => row.host === host);
+            const cacheConfig = this.data.cache_config.filter((row) => row.host === host);
+            const usedConfigKeys = new Set();
+            processConfig.forEach((row) => {
+                if (row.config_param) {
+                    usedConfigKeys.add(row.config_param);
+                }
+                if (row.recommended_param) {
+                    usedConfigKeys.add(row.recommended_param);
+                }
+            });
+            cacheConfig.forEach((row) => {
+                if (row.config_param) {
+                    usedConfigKeys.add(row.config_param);
+                }
+            });
+
             const processRows = this.data.process_config
                 .filter((row) => row.host === host)
                 .map((row) => [
@@ -172,6 +189,9 @@
                     row.status,
                     row.action || '—'
                 ]);
+            const otherConfigRows = this.data.config_items
+                .filter((row) => row.host === host && !usedConfigKeys.has(row.key))
+                .map((row) => [row.key || row.name, row.value ?? '—']);
 
             wrapper.append(
                 this.detailTable('Processos e configuracao equivalente',
@@ -180,12 +200,15 @@
                 ),
                 this.detailTable('Caches versus configuracao',
                     ['Cache', 'Uso atual', 'Media 30d', 'Parametro', 'Configurado', 'Status'],
-                    this.data.cache_config
-                        .filter((row) => row.host === host)
+                    cacheConfig
                         .map((row) => [
                             row.cache, fmt(row.current, 1, '%'), fmt(row.avg30d, 1, '%'),
                             row.config_param || '—', row.config_value ?? '—', row.status
                         ])
+                ),
+                this.detailTable('Outras configuracoes coletadas',
+                    ['Parametro', 'Configurado'],
+                    otherConfigRows
                 )
             );
 
