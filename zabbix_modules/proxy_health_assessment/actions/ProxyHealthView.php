@@ -144,14 +144,18 @@ class ProxyHealthView extends CController {
 
     private function settings(): array {
         $host_groupid = $this->inputHostGroupId();
+        $unsupported_max_percent = $this->inputNum('unsupported_max', 2);
+        if ($unsupported_max_percent > 0 && $unsupported_max_percent < 1) {
+            $unsupported_max_percent *= 100;
+        }
 
         return [
             'host_groupid' => $host_groupid,
             'host_group_name' => $this->hostGroupName($host_groupid),
             'version_cut' => $this->getInput('version_cut', '7.0.20'),
             'patch_min' => $this->inputNum('patch_min', 20),
-            'unsupported_max' => $this->inputNum('unsupported_max', 2) / 100,
-            'unsupported_max_percent' => $this->inputNum('unsupported_max', 2),
+            'unsupported_max' => $unsupported_max_percent / 100,
+            'unsupported_max_percent' => $unsupported_max_percent,
             'vps_max' => $this->inputNum('vps_max', 300),
             'cpu_current_max' => $this->inputNum('cpu_current_max', 85),
             'cpu_avg_max' => $this->inputNum('cpu_avg_max', 75),

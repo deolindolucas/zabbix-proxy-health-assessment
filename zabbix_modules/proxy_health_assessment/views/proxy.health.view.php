@@ -14,12 +14,18 @@ $field = static function($label, $control): CDiv {
     return (new CDiv([$label, $control]))->addClass('proxy-health-config-field');
 };
 
-$input = static function(string $label, string $name, $value, string $type = 'text') use ($field): CDiv {
+$input = static function(string $label, string $name, $value, string $type = 'text', array $attributes = []) use ($field): CDiv {
+    $control = (new CTextBox($name, (string) $value))
+        ->setId('proxy-health-'.$name)
+        ->setAttribute('type', $type);
+
+    foreach ($attributes as $attribute => $attribute_value) {
+        $control->setAttribute($attribute, (string) $attribute_value);
+    }
+
     return $field(
         (new CLabel($label, 'proxy-health-'.$name)),
-        (new CTextBox($name, (string) $value))
-            ->setId('proxy-health-'.$name)
-            ->setAttribute('type', $type)
+        $control
     );
 };
 
@@ -84,7 +90,7 @@ $config_form = (new CForm('get'))
             $input(_('Ultimo acesso maximo (s)'), 'lastaccess_max', $settings['lastaccess_max'], 'number')
         ]),
         $block(_('Thresholds principais do score'), [
-            $input(_('Unsupported maximo (%)'), 'unsupported_max', $settings['unsupported_max_percent'], 'number'),
+            $input(_('Unsupported maximo (%)'), 'unsupported_max', $settings['unsupported_max_percent'], 'number', ['min' => 0, 'step' => 1]),
             $input(_('VPS atual maximo'), 'vps_max', $settings['vps_max'], 'number'),
             $input(_('CPU atual maxima'), 'cpu_current_max', $settings['cpu_current_max'], 'number'),
             $input(_('CPU media 30d maxima'), 'cpu_avg_max', $settings['cpu_avg_max'], 'number'),
