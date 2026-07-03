@@ -84,7 +84,7 @@ $config_form = (new CForm('get'))
             $input(_('Ultimo acesso maximo (s)'), 'lastaccess_max', $settings['lastaccess_max'], 'number')
         ]),
         $block(_('Thresholds principais do score'), [
-            $input(_('Unsupported maximo'), 'unsupported_max', $settings['unsupported_max'], 'number'),
+            $input(_('Unsupported maximo (%)'), 'unsupported_max', $settings['unsupported_max_percent'], 'number'),
             $input(_('VPS atual maximo'), 'vps_max', $settings['vps_max'], 'number'),
             $input(_('CPU atual maxima'), 'cpu_current_max', $settings['cpu_current_max'], 'number'),
             $input(_('CPU media 30d maxima'), 'cpu_avg_max', $settings['cpu_avg_max'], 'number'),
