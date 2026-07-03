@@ -160,22 +160,23 @@
         details(host) {
             const wrapper = document.createElement('div');
             wrapper.className = 'proxy-health-card-details';
-            const configRows = this.data.config_items
-                .filter((row) => row.host === host)
-                .map((row) => [
-                    'Configuracao', row.name, row.value ?? '—', '—', '—', '—', '—', '—'
-                ]);
             const processRows = this.data.process_config
                 .filter((row) => row.host === host)
                 .map((row) => [
-                    'Processo', row.process, fmt(row.current, 1, '%'), fmt(row.avg30d, 1, '%'),
-                    row.config_value ?? '—', row.recommended_value ?? '—', row.status, row.action || '—'
+                    row.process,
+                    fmt(row.current, 1, '%'),
+                    fmt(row.avg30d, 1, '%'),
+                    row.config_param || '—',
+                    row.config_value ?? '—',
+                    row.recommended_value ?? '—',
+                    row.status,
+                    row.action || '—'
                 ]);
 
             wrapper.append(
-                this.detailTable('Configuracao e processos versus configuracao',
-                    ['Tipo', 'Item', 'Valor atual', 'Media 30d', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
-                    [...configRows, ...processRows]
+                this.detailTable('Processos e configuracao equivalente',
+                    ['Parametro', 'Leitura atual', 'Media 30d', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+                    processRows
                 ),
                 this.detailTable('Caches versus configuracao',
                     ['Cache', 'Uso atual', 'Media 30d', 'Parametro', 'Configurado', 'Status'],
