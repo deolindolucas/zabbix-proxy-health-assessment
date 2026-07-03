@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-Standalone Zabbix Proxy Health Assessment v2.0.
+Standalone Zabbix Proxy Health Assessment v3.0.
 
 Requirements:
     python -m pip install zabbix-utils openpyxl
 
 Example:
-    python zabbix_proxy_health_assessment_v2_standalone.py ^
+    python zabbix_proxy_health_assessment_v2.py ^
       --api-url https://webmonitor.com.br ^
       --token TOKEN ^
-      --proxy-template-id 12064 ^
-      --config-template-id 88293 ^
-      --output-xlsx webmonitor_proxy_health_assessment_v2_0.xlsx
+      --host-group "Zabbix/Proxies" ^
+      --output-xlsx webmonitor_proxy_health_assessment_v3_0.xlsx
 """
 
 from __future__ import annotations
@@ -281,18 +280,23 @@ def collect_trends(api, items, now_ts):
     return stats
 
 
-def collect_base(api, zabbix_url, proxy_template_id):
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    template_items = rpc(
+def get_host_group(api, host_group_name):
+    groups = rpc(
         api,
-        "item.get",
+        "hostgroup.get",
         {
-            "output": ["itemid", "name", "key_", "value_type", "units", "type", "delay", "status"],
-            "templateids": [str(proxy_template_id)],
-            "sortfield": "name",
+            "output": ["groupid", "name"],
+            "filter": {"name": [host_group_name]},
         },
     )
-    proxy_template_keys = sorted({item["key_"] for item in template_items if item.get("status") == "0"})
+    if not groups:
+        raise RuntimeError(f"Host group not found: {host_group_name}")
+    return groups[0]
+
+
+def collect_base(api, zabbix_url, host_group_name):
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    host_group = get_host_group(api, host_group_name)
     hosts = rpc(
         api,
         "host.get",
@@ -300,14 +304,14 @@ def collect_base(api, zabbix_url, proxy_template_id):
             "output": ["hostid", "host", "name", "status", "available", "proxy_hostid"],
             "selectInterfaces": ["ip", "dns", "type", "main", "useip"],
             "selectParentTemplates": ["templateid", "host", "name"],
-            "templateids": [str(proxy_template_id)],
+            "groupids": [host_group["groupid"]],
             "sortfield": "name",
         },
     )
     hosts = [host for host in hosts if host.get("status") == "0"]
     hostids = [host["hostid"] for host in hosts]
     if not hostids:
-        raise RuntimeError(f"No enabled hosts found for template {proxy_template_id}")
+        raise RuntimeError(f"No enabled hosts found for host group {host_group_name}")
 
     items = rpc(
         api,
@@ -325,7 +329,6 @@ def collect_base(api, zabbix_url, proxy_template_id):
     relevant_items = [
         item for item in items
         if item["key_"] in IMPORTANT_KEYS
-        or item["key_"] in proxy_template_keys
         or item["key_"].startswith(PROCESS_KEY_PREFIX)
     ]
     trends30d = collect_trends(api, relevant_items, now_ts)
@@ -358,8 +361,7 @@ def collect_base(api, zabbix_url, proxy_template_id):
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "api_url": zabbix_url,
-        "template_id": str(proxy_template_id),
-        "proxy_template_item_keys": proxy_template_keys,
+        "host_group": {"groupid": host_group["groupid"], "name": host_group["name"]},
         "hosts": hosts,
         "items": relevant_items,
         "trends30d": trends30d,
@@ -368,47 +370,27 @@ def collect_base(api, zabbix_url, proxy_template_id):
     }
 
 
-def collect_proxy_config(api, data, config_template_id):
+def collect_proxy_config(api, data):
     hostids = [host["hostid"] for host in data["hosts"] if host.get("status") == "0"]
-    template = rpc(
-        api,
-        "template.get",
-        {"output": ["templateid", "host", "name"], "templateids": [str(config_template_id)]},
-    )
-    template_items = rpc(
+    config_items = rpc(
         api,
         "item.get",
         {
-            "output": ["itemid", "name", "key_", "value_type", "units", "type", "delay", "status"],
-            "templateids": [str(config_template_id)],
+            "output": [
+                "itemid", "hostid", "name", "key_", "lastvalue", "lastclock",
+                "value_type", "units", "state", "status", "error",
+            ],
+            "hostids": hostids,
+            "search": {"key_": "num."},
             "sortfield": "name",
         },
     )
-    keys = [item["key_"] for item in template_items]
-    config_items = []
-    for key_batch in chunked(keys, 20):
-        config_items.extend(
-            rpc(
-                api,
-                "item.get",
-                {
-                    "output": [
-                        "itemid", "hostid", "name", "key_", "lastvalue", "lastclock",
-                        "value_type", "units", "state", "status", "error",
-                    ],
-                    "hostids": hostids,
-                    "filter": {"key_": key_batch},
-                    "sortfield": "name",
-                },
-            )
-        )
-    data["template_40191"] = {
-        "templateid": str(config_template_id),
-        "name": template[0]["name"] if template else "Template Monitoramento de Configuracao Zabbix",
+    data["proxy_config_source"] = {
+        "source": "host_items_key_search",
+        "key_search": "num.",
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "item_keys": keys,
+        "item_keys": sorted({item["key_"] for item in config_items}),
     }
-    data["config_template_id"] = str(config_template_id)
     data["proxy_config_items"] = sorted(
         {item["itemid"]: item for item in config_items}.values(),
         key=lambda item: (item.get("hostid", ""), item.get("name", "")),
@@ -877,7 +859,7 @@ def build_workbook(data, output_xlsx):
     table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
     overview.add_table(table)
 
-    proxy_config = add_sheet(wb, "Proxy Config", "Leituras atuais dos itens do template de configuracao.", "H")
+    proxy_config = add_sheet(wb, "Proxy Config", "Leituras atuais dos itens de configuracao num.* coletados nos hosts avaliados.", "H")
     write_table(proxy_config, 4, rows["proxy_config_rows"] or [{"Host": "", "Config item": "", "Key": "", "Valor": None, "Unidade": "", "Ultima coleta": None, "Estado": "", "Erro": ""}], "ProxyConfigV1")
 
     process_config = add_sheet(wb, "Process vs Config", "Compara utilizacao dos processos internos do proxy com parametros coletados.", "I")
@@ -894,8 +876,9 @@ def build_workbook(data, output_xlsx):
 
     methodology = add_sheet(wb, "Methodology", "Score focado na saude do proxy, nao na quantidade bruta de problemas dos hosts monitorados por ele.", "D")
     methodology_rows = [
-        {"Tema": "Escopo", "Criterio": "Proxies online", "Descricao tecnica simples": "Considera hosts habilitados que usam o template de proxy informado.", "Como interpretar": "Overview representa os proxies avaliaveis no momento da coleta."},
+        {"Tema": "Escopo", "Criterio": "Proxies online", "Descricao tecnica simples": "Considera hosts habilitados dentro do host group informado.", "Como interpretar": "Overview representa os proxies avaliaveis no momento da coleta."},
         {"Tema": "Configuracao do proxy", "Criterio": "Config!B21", "Descricao tecnica simples": "Se Sim, Process vs Config e Cache vs Config entram no score.", "Como interpretar": "Com Nao, mantem score sem penalizacao por configuracao."},
+        {"Tema": "Configuracao coletada", "Criterio": "Itens num.*", "Descricao tecnica simples": "As leituras de configuracao sao coletadas diretamente dos hosts do grupo, procurando itens com chave num.*.", "Como interpretar": "Dispensa informar o template de configuracao, desde que os itens estejam linkados aos proxies."},
         {"Tema": "Thresholds", "Criterio": "B22/B23", "Descricao tecnica simples": "Pollers e caches usam threshold default de 75%.", "Como interpretar": "Altere conforme a politica operacional."},
         {"Tema": "SO", "Criterio": "Capacidade do host", "Descricao tecnica simples": "CPU, load por core, memoria total, memoria usada e disco raiz sao incluidos para correlacionar carga do proxy com capacidade do sistema operacional.", "Como interpretar": "Memoria total e apoio de capacidade; uso percentual segue como criterio de score."},
         {"Tema": "Disco", "Criterio": "Fallback", "Descricao tecnica simples": data.get("disk_selection_note", "Usa vfs.fs.size[/,pused] quando disponivel."), "Como interpretar": "Hosts sem item percentual de disco permanecem vazios em V/W."},
@@ -995,11 +978,10 @@ def validate_xlsx(path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Standalone Zabbix Proxy Health Assessment v2.0.")
+    parser = argparse.ArgumentParser(description="Standalone Zabbix Proxy Health Assessment v3.0.")
     parser.add_argument("--api-url", required=True, help="Base Zabbix URL or full api_jsonrpc.php URL.")
     parser.add_argument("--token", required=True)
-    parser.add_argument("--proxy-template-id", required=True)
-    parser.add_argument("--config-template-id", required=True)
+    parser.add_argument("--host-group", default="Zabbix/Proxies", help="Host group containing the proxy hosts. Default: Zabbix/Proxies.")
     parser.add_argument("--output-xlsx", required=True)
     parser.add_argument("--output-json", help="Optional intermediate JSON path.")
     parser.add_argument("--skip-disk", action="store_true")
@@ -1010,21 +992,20 @@ def main():
     output_xlsx = Path(args.output_xlsx).resolve()
     output_json = Path(args.output_json).resolve() if args.output_json else output_xlsx.with_suffix(".json")
 
-    print("Zabbix Proxy Health Assessment v2.0 standalone")
+    print("Zabbix Proxy Health Assessment v3.0 standalone")
     print(f"zabbix_url={zabbix_url}")
-    print(f"proxy_template_id={args.proxy_template_id}")
-    print(f"config_template_id={args.config_template_id}")
+    print(f"host_group={args.host_group}")
     print(f"output_xlsx={output_xlsx}")
 
     print("Connecting with zabbix_utils.ZabbixAPI...")
     api = connect_zabbix(zabbix_url, args.token)
 
     print("Collecting proxy health data...")
-    data = collect_base(api, zabbix_url, args.proxy_template_id)
+    data = collect_base(api, zabbix_url, args.host_group)
     print(f"hosts={len(data['hosts'])} items={len(data['items'])} problems={len(data['problems'])}")
 
     print("Collecting proxy configuration data...")
-    collect_proxy_config(api, data, args.config_template_id)
+    collect_proxy_config(api, data)
     print(f"config_items={len(data.get('proxy_config_items', []))}")
 
     if not args.skip_disk:

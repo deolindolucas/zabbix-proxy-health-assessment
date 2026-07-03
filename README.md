@@ -8,7 +8,7 @@ O objetivo do assessment e responder uma pergunta bem pratica:
 
 Por isso, o score nao mede a quantidade bruta de problemas dos hosts monitorados por um proxy. Ele foca em sinais que afetam o proprio proxy, a aplicacao Zabbix Proxy, os processos internos, filas, caches e recursos do sistema operacional.
 
-A coleta e adaptativa: alem das chaves essenciais do assessment, o script descobre os itens habilitados nos templates informados em `--proxy-template-id` e `--config-template-id`. Isso reduz o risco de deixar fora leituras simples quando o template de saude ou o template de configuracao evoluem.
+A coleta parte de um Host Group. Por padrao o script usa `Zabbix/Proxies`, mas isso pode ser alterado com `--host-group`. As leituras de configuracao sao coletadas diretamente nos hosts avaliados procurando itens com chave `num.*`, sem exigir informar IDs de template.
 
 ## Requisitos
 
@@ -36,9 +36,8 @@ Exemplo:
 python zabbix_proxy_health_assessment_v2.py \
   --api-url https://webmonitor.com.br \
   --token "SEU_TOKEN" \
-  --proxy-template-id 12064 \
-  --config-template-id 88293 \
-  --output-xlsx webmonitor_proxy_health_assessment_v2_0.xlsx
+  --host-group "Zabbix/Proxies" \
+  --output-xlsx webmonitor_proxy_health_assessment_v3_0.xlsx
 ```
 
 Tambem e aceito informar a URL completa da API:
@@ -55,8 +54,7 @@ O script normaliza automaticamente para a URL base usada pela biblioteca oficial
 |---|---:|---|
 | `--api-url` | Sim | URL base do Zabbix ou URL completa `api_jsonrpc.php`. |
 | `--token` | Sim | Token de API do Zabbix. |
-| `--proxy-template-id` | Sim | ID do template usado pelos hosts de proxy. |
-| `--config-template-id` | Sim | ID do template que coleta configuracoes do arquivo do proxy. |
+| `--host-group` | Nao | Host Group que contem os proxies. Padrao: `Zabbix/Proxies`. |
 | `--output-xlsx` | Sim | Caminho do arquivo `.xlsx` final. |
 | `--output-json` | Nao | Caminho opcional para salvar o JSON intermediario. Por padrao fica ao lado do XLSX. |
 | `--skip-disk` | Nao | Ignora a etapa complementar de descoberta de disco. |
@@ -122,7 +120,7 @@ http poller: diminuir pollers;
 
 ### Proxy Config
 
-Lista os itens coletados do template de configuracao do proxy. A ideia e evitar acesso manual ao arquivo de configuracao do Zabbix Proxy.
+Lista os itens de configuracao coletados diretamente dos proxies avaliados. A coleta busca itens com chave `num.*`, evitando acesso manual ao arquivo de configuracao do Zabbix Proxy e dispensando informar o template de configuracao.
 
 Exemplos de parametros esperados:
 
@@ -135,7 +133,7 @@ Exemplos de parametros esperados:
 - `num.valueCacheSize`
 - `num.trendcachesize`
 
-O script coleta todas as chaves habilitadas do template de configuracao informado, nao apenas os exemplos acima.
+O script coleta todas as chaves `num.*` presentes nos hosts do grupo, nao apenas os exemplos acima.
 
 ### Process vs Config
 
@@ -304,5 +302,5 @@ Se nenhum item percentual de disco existir para o host, as colunas de disco perm
 - As medias de 30 dias usam `trend.get`, portanto dependem da retencao de trends do Zabbix.
 - A analise de disco depende da existencia de itens percentuais `vfs.fs.size[...,pused/pfree]`.
 - A comparacao de pollers usa o percentual busy do proprio Zabbix. A quantidade configurada e usada para indicar qual parametro revisar, nao como divisor matematico.
-- A qualidade da aba `Proxy Config` depende do template de configuracao informado coletar corretamente os valores do arquivo do proxy.
-- A coleta acompanha as chaves habilitadas nos templates informados; itens novos passam a aparecer em `Raw Items`/`Proxy Config`, mas so alteram o score quando fazem parte das regras documentadas.
+- A qualidade da aba `Proxy Config` depende dos hosts do grupo possuirem itens `num.*` coletando corretamente os valores do arquivo do proxy.
+- Itens novos passam a aparecer em `Proxy Config` quando usam chave `num.*`, mas so alteram o score quando fazem parte das regras documentadas.

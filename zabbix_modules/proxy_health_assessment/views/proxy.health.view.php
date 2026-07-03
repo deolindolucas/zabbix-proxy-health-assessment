@@ -33,6 +33,32 @@ $checkbox = static function(string $label, string $name, string $value) use ($fi
     );
 };
 
+$host_group_select = static function(array $settings) use ($field): CDiv {
+    $selected = $settings['host_groupid'] !== ''
+        ? [['id' => $settings['host_groupid'], 'name' => $settings['host_group_name']]]
+        : [];
+
+    return $field(
+        (new CLabel(_('Host group'), 'host_groupid')),
+        (new CMultiSelect([
+            'name' => 'host_groupid',
+            'object_name' => 'hostGroup',
+            'data' => $selected,
+            'multiple' => false,
+            'popup' => [
+                'parameters' => [
+                    'srctbl' => 'host_groups',
+                    'srcfld1' => 'groupid',
+                    'dstfrm' => 'proxy_health_config_form',
+                    'dstfld1' => 'host_groupid',
+                    'normal_only' => '1'
+                ]
+            ]
+        ]))
+            ->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
+    );
+};
+
 $block = static function(string $title, array $fields, $toggle = null): CDiv {
     if ($toggle !== null) {
         array_unshift($fields, $toggle);
@@ -46,13 +72,13 @@ $block = static function(string $title, array $fields, $toggle = null): CDiv {
 };
 
 $config_form = (new CForm('get'))
+    ->setName('proxy_health_config_form')
     ->setId('proxy-health-config-form')
     ->addClass('proxy-health-config-form')
     ->addVar('action', $data['action'])
     ->addItem([
         $block(_('Coleta'), [
-            $input(_('Template de proxy'), 'proxy_template_id', $settings['proxy_template_id']),
-            $input(_('Template de configuracao'), 'config_template_id', $settings['config_template_id']),
+            $host_group_select($settings),
             $input(_('Versao de corte'), 'version_cut', $settings['version_cut']),
             $input(_('Patch minimo'), 'patch_min', $settings['patch_min'], 'number'),
             $input(_('Ultimo acesso maximo (s)'), 'lastaccess_max', $settings['lastaccess_max'], 'number')

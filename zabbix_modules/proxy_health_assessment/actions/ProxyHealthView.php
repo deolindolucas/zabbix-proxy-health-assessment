@@ -13,6 +13,7 @@ use Throwable;
  */
 class ProxyHealthView extends CController {
 
+    private const DEFAULT_HOST_GROUP = 'Zabbix/Proxies';
     private const PROCESS_PREFIX = 'zabbix[process,';
     private const IMPORTANT_KEYS = [
         'agent.ping', 'system.cpu.load[all,avg1]', 'system.cpu.num', 'system.cpu.util',
@@ -69,8 +70,7 @@ class ProxyHealthView extends CController {
 
     protected function checkInput(): bool {
         $valid = $this->validateInput([
-            'proxy_template_id' => 'string',
-            'config_template_id' => 'string',
+            'host_groupid' => 'string',
             'version_cut' => 'string',
             'patch_min' => 'string',
             'unsupported_max' => 'string',
@@ -113,7 +113,7 @@ class ProxyHealthView extends CController {
         }
         catch (Throwable $exception) {
             $data = [
-                'error' => _('Nao foi possivel coletar os dados do assessment. Verifique permissao de API, templates e itens.'),
+                'error' => _('Nao foi possivel coletar os dados do assessment. Verifique permissao de API, host group e itens.'),
                 'exception' => $exception->getMessage(),
                 'proxies' => [],
                 'config_items' => [],
@@ -143,9 +143,11 @@ class ProxyHealthView extends CController {
     }
 
     private function settings(): array {
+        $host_groupid = $this->inputHostGroupId();
+
         return [
-            'proxy_template_id' => $this->getInput('proxy_template_id', '12064'),
-            'config_template_id' => $this->getInput('config_template_id', '88293'),
+            'host_groupid' => $host_groupid,
+            'host_group_name' => $this->hostGroupName($host_groupid),
             'version_cut' => $this->getInput('version_cut', '7.0.20'),
             'patch_min' => $this->inputNum('patch_min', 20),
             'unsupported_max' => $this->inputNum('unsupported_max', 0.02),
@@ -172,10 +174,22 @@ class ProxyHealthView extends CController {
 
     private function collect(array $settings): array {
         $now = time();
+        if ($settings['host_groupid'] === '') {
+            return [
+                'proxies' => [],
+                'config_items' => [],
+                'process_config' => [],
+                'cache_config' => [],
+                'orphans' => [],
+                'active_problems' => [],
+                'excluded_offline' => []
+            ];
+        }
+
         $hosts = API::Host()->get([
             'output' => ['hostid', 'host', 'name', 'status', 'available'],
             'selectInterfaces' => ['ip', 'dns', 'type', 'main', 'useip'],
-            'templateids' => [$settings['proxy_template_id']],
+            'groupids' => [$settings['host_groupid']],
             'sortfield' => 'name'
         ]);
         $hosts = array_values(array_filter($hosts, static fn(array $host): bool => $host['status'] === '0'));
@@ -193,16 +207,6 @@ class ProxyHealthView extends CController {
             ];
         }
 
-        $template_items = API::Item()->get([
-            'output' => ['key_', 'status'],
-            'templateids' => [$settings['proxy_template_id']],
-            'sortfield' => 'name'
-        ]);
-        $proxy_template_keys = array_values(array_unique(array_column(
-            array_filter($template_items, static fn(array $item): bool => ($item['status'] ?? '0') === '0'),
-            'key_'
-        )));
-
         $items = API::Item()->get([
             'output' => ['itemid', 'hostid', 'name', 'key_', 'lastvalue', 'lastclock',
                 'value_type', 'units', 'status', 'state', 'error'],
@@ -212,13 +216,12 @@ class ProxyHealthView extends CController {
         ]);
         $items = array_values(array_filter($items, static fn(array $item): bool =>
             in_array($item['key_'], self::IMPORTANT_KEYS, true)
-            || in_array($item['key_'], $proxy_template_keys, true)
             || strpos($item['key_'], self::PROCESS_PREFIX) === 0
         ));
 
         $this->enrichDiskItems($items, $hostids, $now);
         $trends = $this->collectTrends($items, $now);
-        $config_items = $this->collectConfigItems($settings['config_template_id'], $hostids);
+        $config_items = $this->collectConfigItems($hostids);
         [$active_problems, $orphan_problems, $problem_counts, $orphan_counts] = $this->collectProblems($hostids);
 
         $items_by_host = $this->groupItemsByHost($items);
@@ -499,27 +502,17 @@ class ProxyHealthView extends CController {
         return $rows;
     }
 
-    private function collectConfigItems(string $templateid, array $hostids): array {
-        if ($templateid === '') {
+    private function collectConfigItems(array $hostids): array {
+        if (!$hostids) {
             return [];
         }
-        $template_items = API::Item()->get([
-            'output' => ['key_'],
-            'templateids' => [$templateid],
+        return API::Item()->get([
+            'output' => ['itemid', 'hostid', 'name', 'key_', 'lastvalue', 'lastclock',
+                'value_type', 'units', 'state', 'status', 'error'],
+            'hostids' => $hostids,
+            'search' => ['key_' => 'num.'],
             'sortfield' => 'name'
         ]);
-        $keys = array_values(array_unique(array_column($template_items, 'key_')));
-        $items = [];
-        foreach (array_chunk($keys, 20) as $batch) {
-            $items = array_merge($items, API::Item()->get([
-                'output' => ['itemid', 'hostid', 'name', 'key_', 'lastvalue', 'lastclock',
-                    'value_type', 'units', 'state', 'status', 'error'],
-                'hostids' => $hostids,
-                'filter' => ['key_' => $batch],
-                'sortfield' => 'name'
-            ]));
-        }
-        return $items;
     }
 
     private function collectProblems(array $hostids): array {
@@ -722,6 +715,39 @@ class ProxyHealthView extends CController {
 
     private function inputNum(string $name, float $default): float {
         return self::num($this->getInput($name, (string) $default)) ?? $default;
+    }
+
+    private function inputHostGroupId(): string {
+        $input = $this->getInput('host_groupid', '');
+        if (is_array($input)) {
+            $input = reset($input) ?: '';
+        }
+        $input = (string) $input;
+        if ($input !== '') {
+            return $input;
+        }
+
+        $groups = API::HostGroup()->get([
+            'output' => ['groupid', 'name'],
+            'filter' => ['name' => [self::DEFAULT_HOST_GROUP]],
+            'limit' => 1
+        ]);
+
+        return $groups ? (string) $groups[0]['groupid'] : '';
+    }
+
+    private function hostGroupName(string $groupid): string {
+        if ($groupid === '') {
+            return self::DEFAULT_HOST_GROUP;
+        }
+
+        $groups = API::HostGroup()->get([
+            'output' => ['groupid', 'name'],
+            'groupids' => [$groupid],
+            'limit' => 1
+        ]);
+
+        return $groups ? (string) $groups[0]['name'] : self::DEFAULT_HOST_GROUP;
     }
 
     private static function num($value): ?float {
