@@ -88,6 +88,7 @@ TREND_KEYS = set(IMPORTANT_KEYS) - TREND_EXCLUDED_KEYS
 PROCESS_CONFIG_MAP = {
     "agent poller": "num.StartAgentPollers",
     "browser poller": "num.StartBrowserPollers",
+    "discoverer": "num.StartDiscoverers",
     "discovery worker": "num.StartDiscoverers",
     "history syncer": "num.StartDBSyncers",
     "http agent poller": "num.StartHTTPAgentPollers",
@@ -107,6 +108,7 @@ PROCESS_CONFIG_MAP = {
 RECOMMENDED_CONFIG_MAP = {
     "agent poller": "num.recomendado.agent",
     "browser poller": "num.recomendado.browser",
+    "discoverer": "num.recomendado.discoverers",
     "discovery worker": "num.recomendado.discoverers",
     "http poller": "num.recomendado.http",
     "http agent poller": "num.recomendado.httpagent",
@@ -120,6 +122,19 @@ RECOMMENDED_CONFIG_MAP = {
     "trapper": "num.recomendado.trappers",
     "unreachable poller": "num.recomendado.unreachable",
     "vmware collector": "num.recomendado.vmware",
+}
+NON_CONFIGURABLE_PROCESSES = {
+    "availability manager",
+    "configuration syncer",
+    "data sender",
+    "discovery manager",
+    "heartbeat sender",
+    "housekeeper",
+    "internal poller",
+    "ipmi manager",
+    "preprocessing manager",
+    "self-monitoring",
+    "task manager",
 }
 CACHE_CONFIG_MAP = [
     ("Configuration cache", "num.CacheSize", "num.CacheSize.bytes", "num.recomendado.CacheSize", [("zabbix[rcache,buffer,pused]", "pused"), ("zabbix[rcache,buffer,pfree]", "pfree")]),
@@ -898,11 +913,14 @@ def config_score_details_formula(row, cache_last):
 
 
 def process_config_status(row, poller_threshold=75):
+    process_name = row.get("Processo")
     configured = positive_number(row.get("Valor configurado"))
     recommended = positive_number(row.get("Valor recomendado"))
     current = to_number(row.get("Busy atual %")) or 0
     avg30d = to_number(row.get("Busy media 30d %")) or 0
     if configured is None:
+        if process_name in NON_CONFIGURABLE_PROCESSES:
+            return "Sem parametro configuravel"
         return "Sem mapeamento"
     if current == 0 and avg30d == 0 and configured > 1:
         return "Avaliar diminuicao"
@@ -1059,9 +1077,18 @@ def build_workbook(data, output_xlsx):
 
     process_config = add_sheet(wb, "Process vs Config", "Compara utilizacao dos processos internos do proxy com parametros coletados.", "I")
     write_table(process_config, 4, rows["process_config_rows"] or [{"Host": "", "Processo": "", "Status": "", "Acao sugerida": "", "Busy atual %": None, "Busy media 30d %": None, "Valor configurado": None, "Valor recomendado": None, "Ultima coleta config": None}], "ProcessVsConfigV1")
-    for r in range(5, 5 + max(len(rows["process_config_rows"]), 1)):
-        process_config[f"C{r}"] = f'=IF(G{r}="","Sem mapeamento",IF(AND(E{r}=0,F{r}=0,G{r}>1),"Avaliar diminuicao",IF(OR(E{r}>Config!$B$22,F{r}>Config!$B$22),"Avaliar aumento",IF(AND(H{r}<>"",G{r}>H{r},F{r}<50),"Avaliar diminuicao","OK"))))'
-        process_config[f"D{r}"] = f'=IF(C{r}="Avaliar aumento","Aumentar numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")",IF(C{r}="Avaliar diminuicao",IF(AND(E{r}=0,F{r}=0,G{r}>1),"Diminuir numero de pollers para 1 (sem uso atual ou media 30d; configurado="&G{r}&")","Diminuir numero de pollers (configurado="&G{r}&", recomendado="&H{r}&")"),""))'
+    process_rows_for_sheet = rows["process_config_rows"] or [{"Processo": ""}]
+    for offset, process_row in enumerate(process_rows_for_sheet, 5):
+        process_name = process_row.get("Processo")
+        if process_name in NON_CONFIGURABLE_PROCESSES:
+            process_config[f"C{offset}"] = "Sem parametro configuravel"
+            process_config[f"D{offset}"] = ""
+        elif not PROCESS_CONFIG_MAP.get(process_name or ""):
+            process_config[f"C{offset}"] = "Sem mapeamento"
+            process_config[f"D{offset}"] = ""
+        else:
+            process_config[f"C{offset}"] = f'=IF(G{offset}="","Sem mapeamento",IF(AND(E{offset}=0,F{offset}=0,G{offset}>1),"Avaliar diminuicao",IF(OR(E{offset}>Config!$B$22,F{offset}>Config!$B$22),"Avaliar aumento",IF(AND(H{offset}<>"",G{offset}>H{offset},F{offset}<50),"Avaliar diminuicao","OK"))))'
+            process_config[f"D{offset}"] = f'=IF(C{offset}="Avaliar aumento","Aumentar numero de pollers (configurado="&G{offset}&", recomendado="&H{offset}&")",IF(C{offset}="Avaliar diminuicao",IF(AND(E{offset}=0,F{offset}=0,G{offset}>1),"Diminuir numero de pollers para 1 (sem uso atual ou media 30d; configurado="&G{offset}&")","Diminuir numero de pollers (configurado="&G{offset}&", recomendado="&H{offset}&")"),""))'
 
     cache_config = add_sheet(wb, "Cache vs Config", "Compara uso dos caches do proxy com parametros coletados.", "M")
     write_table(cache_config, 4, rows["cache_config_rows"] or [{"Host": "", "Cache": "", "Cache key": "", "Uso atual %": None, "Uso media 30d %": None, "Parametro config": "", "Valor configurado": None, "Valor configurado bytes": None, "Valor recomendado bytes": None, "Status": "", "Acao sugerida": "", "Ultima coleta cache": None, "Ultima coleta config": None}], "CacheVsConfigV1")

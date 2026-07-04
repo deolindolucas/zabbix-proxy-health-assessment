@@ -10,6 +10,13 @@
     };
 
     const pct = (value) => value === null || value === undefined ? '—' : `${(Number(value) * 100).toFixed(2)}%`;
+    const bytes = (value) => {
+        if (value === null || value === undefined || value === '') {
+            return '—';
+        }
+        const number = Number(value);
+        return Number.isFinite(number) ? number.toLocaleString('pt-BR') : String(value);
+    };
     const normalize = (value) => String(value ?? '')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -175,6 +182,12 @@
                 if (row.config_param) {
                     usedConfigKeys.add(row.config_param);
                 }
+                if (row.config_bytes_param) {
+                    usedConfigKeys.add(row.config_bytes_param);
+                }
+                if (row.recommended_param) {
+                    usedConfigKeys.add(row.recommended_param);
+                }
             });
 
             const processRows = this.data.process_config
@@ -199,11 +212,13 @@
                     processRows
                 ),
                 this.detailTable('Caches versus configuracao',
-                    ['Cache', 'Uso atual', 'Media 30d', 'Parametro', 'Configurado', 'Status'],
+                    ['Cache', 'Uso atual', 'Media 30d', 'Parametro', 'Configurado', 'Configurado bytes', 'Recomendado bytes', 'Status', 'Acao sugerida'],
                     cacheConfig
                         .map((row) => [
                             row.cache, fmt(row.current, 1, '%'), fmt(row.avg30d, 1, '%'),
-                            row.config_param || '—', row.config_value ?? '—', row.status
+                            row.config_param || '—', row.config_value ?? '—',
+                            bytes(row.config_bytes), bytes(row.recommended_bytes),
+                            row.status, row.action || row.finding || '—'
                         ])
                 ),
                 this.detailTable('Outras configuracoes coletadas',

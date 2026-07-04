@@ -25,7 +25,8 @@ class ProxyHealthView extends CController {
         'zabbix[proxy_buffer,state,changes]', 'zabbix[proxy_buffer,buffer,pused]',
         'zabbix[rcache,buffer,pfree]', 'zabbix[rcache,buffer,pused]',
         'zabbix[wcache,history,pfree]', 'zabbix[wcache,history,pused]',
-        'zabbix[wcache,index,pused]', 'zabbix[vmware,buffer,pused]', 'zabbix[proxy_history]',
+        'zabbix[wcache,index,pused]', 'zabbix[wcache,trend,pused]',
+        'zabbix[vcache,buffer,pused]', 'zabbix[vmware,buffer,pused]', 'zabbix[proxy_history]',
         'zabbix[queue]', 'zabbix[discovery_queue]', 'zabbix[wcache,values]',
         'zabbix[wcache,values,float]', 'zabbix[wcache,values,uint]',
         'zabbix[wcache,values,str]', 'zabbix[wcache,values,text]',
@@ -33,6 +34,7 @@ class ProxyHealthView extends CController {
     ];
     private const PROCESS_CONFIG_MAP = [
         'agent poller' => 'num.StartAgentPollers',
+        'browser poller' => 'num.StartBrowserPollers',
         'discoverer' => 'num.StartDiscoverers',
         'discovery worker' => 'num.StartDiscoverers',
         'history syncer' => 'num.StartDBSyncers',
@@ -43,26 +45,54 @@ class ProxyHealthView extends CController {
         'java poller' => 'num.StartJavaPollers',
         'odbc poller' => 'num.StartODBCPollers',
         'poller' => 'num.poller',
+        'preprocessing worker' => 'num.StartPreprocessors',
         'snmp poller' => 'num.StartSNMPPollers',
         'snmp trapper' => 'num.StartSNMPTrapper',
         'trapper' => 'num.StartTrappers',
-        'unreachable poller' => 'num.StartPollersUnreachable'
+        'unreachable poller' => 'num.StartPollersUnreachable',
+        'vmware collector' => 'num.StartVMwareCollectors'
     ];
     private const RECOMMENDED_CONFIG_MAP = [
+        'agent poller' => 'num.recomendado.agent',
+        'browser poller' => 'num.recomendado.browser',
+        'discoverer' => 'num.recomendado.discoverers',
+        'discovery worker' => 'num.recomendado.discoverers',
         'http poller' => 'num.recomendado.http',
+        'http agent poller' => 'num.recomendado.httpagent',
+        'icmp pinger' => 'num.recomendado.pingers',
         'ipmi poller' => 'num.recomendado.ipmi',
+        'java poller' => 'num.recomendado.java',
         'odbc poller' => 'num.recomendado.odbc',
-        'poller' => 'num.ideal.pollers',
+        'poller' => 'num.recomendado.pollers',
+        'preprocessing worker' => 'num.recomendado.preprocessors',
+        'snmp poller' => 'num.recomendado.snmp',
         'trapper' => 'num.recomendado.trappers',
-        'unreachable poller' => 'num.recomendado.unreachable'
+        'unreachable poller' => 'num.recomendado.unreachable',
+        'vmware collector' => 'num.recomendado.vmware'
+    ];
+    private const NON_CONFIGURABLE_PROCESSES = [
+        'availability manager', 'configuration syncer', 'data sender', 'discovery manager',
+        'heartbeat sender', 'housekeeper', 'internal poller', 'ipmi manager',
+        'preprocessing manager', 'self-monitoring', 'task manager'
     ];
     private const CACHE_CONFIG_MAP = [
-        ['Configuration cache', 'num.CacheSize', [['zabbix[rcache,buffer,pused]', 'pused'], ['zabbix[rcache,buffer,pfree]', 'pfree']]],
-        ['History write cache', '', [['zabbix[wcache,history,pused]', 'pused'], ['zabbix[wcache,history,pfree]', 'pfree']]],
-        ['History index cache', '', [['zabbix[wcache,index,pused]', 'pused']]],
-        ['Proxy memory buffer', '', [['zabbix[proxy_buffer,buffer,pused]', 'pused']]],
-        ['VMware cache', 'num.VMwareCacheSize', [['zabbix[vmware,buffer,pused]', 'pused']]]
+        ['Configuration cache', 'num.CacheSize', 'num.CacheSize.bytes', 'num.recomendado.CacheSize', [['zabbix[rcache,buffer,pused]', 'pused'], ['zabbix[rcache,buffer,pfree]', 'pfree']]],
+        ['History write cache', 'num.HistoryCacheSize', 'num.HistoryCacheSize.bytes', 'num.recomendado.HistoryCacheSize', [['zabbix[wcache,history,pused]', 'pused'], ['zabbix[wcache,history,pfree]', 'pfree']]],
+        ['History index cache', 'num.HistoryIndexCacheSize', 'num.HistoryIndexCacheSize.bytes', 'num.recomendado.HistoryIndexCacheSize', [['zabbix[wcache,index,pused]', 'pused']]],
+        ['Trend write cache', 'num.trendcachesize', 'num.TrendCacheSize.bytes', 'num.recomendado.TrendCacheSize', [['zabbix[wcache,trend,pused]', 'pused']]],
+        ['Value cache', 'num.valueCacheSize', 'num.ValueCacheSize.bytes', 'num.recomendado.ValueCacheSize', [['zabbix[vcache,buffer,pused]', 'pused']]],
+        ['Proxy memory buffer', '', '', '', [['zabbix[proxy_buffer,buffer,pused]', 'pused']]],
+        ['VMware cache', 'num.VMwareCacheSize', '', '', [['zabbix[vmware,buffer,pused]', 'pused']]]
     ];
+    private const CACHE_DEFAULTS = [
+        'num.CacheSize' => '8M',
+        'num.HistoryCacheSize' => '16M',
+        'num.HistoryIndexCacheSize' => '4M',
+        'num.trendcachesize' => '4M',
+        'num.valueCacheSize' => '8M',
+        'num.VMwareCacheSize' => '8M'
+    ];
+    private const CACHE_TARGET_LOAD = 0.60;
 
     protected function init(): void {
         $this->disableCsrfValidation();
@@ -413,7 +443,9 @@ class ProxyHealthView extends CController {
             $config_value = $param !== '' ? self::num($cfg_items[$param]['lastvalue'] ?? null) : null;
             $recommended_value = $recommended !== '' ? self::num($cfg_items[$recommended]['lastvalue'] ?? null) : null;
             if ($param === '') {
-                $status = 'Sem mapeamento';
+                $status = in_array($process, self::NON_CONFIGURABLE_PROCESSES, true)
+                    ? 'Sem parametro configuravel'
+                    : 'Sem mapeamento';
             }
             elseif ($current === 0.0 && $avg === 0.0 && $config_value !== null && $config_value > 1) {
                 $status = 'Avaliar diminuicao';
@@ -469,7 +501,7 @@ class ProxyHealthView extends CController {
             array $settings, bool $only_findings = false): array {
         $rows = [];
         foreach (self::CACHE_CONFIG_MAP as $meta) {
-            [$name, $param, $candidates] = $meta;
+            [$name, $param, $bytes_param, $recommended_param, $candidates] = $meta;
             $selected_key = null;
             $selected_mode = null;
             $selected_item = null;
@@ -487,6 +519,20 @@ class ProxyHealthView extends CController {
             }
             $current = self::cacheUsed($selected_item['lastvalue'] ?? null, $selected_mode);
             $avg = self::cacheUsed($trends[$selected_item['itemid']]['avg30d'] ?? null, $selected_mode);
+            $configured_value = $param !== ''
+                ? (($cfg_items[$param]['lastvalue'] ?? null) ?: (self::CACHE_DEFAULTS[$param] ?? null))
+                : null;
+            $configured_bytes = $bytes_param !== ''
+                ? self::positiveNum($cfg_items[$bytes_param]['lastvalue'] ?? null)
+                : null;
+            $configured_bytes = $configured_bytes ?? self::sizeToBytes($configured_value);
+            $recommended_bytes = $recommended_param !== ''
+                ? self::positiveNum($cfg_items[$recommended_param]['lastvalue'] ?? null)
+                : null;
+            $usage_for_recommendation = self::maxNum([$current, $avg]);
+            if ($recommended_bytes === null && $configured_bytes !== null && $usage_for_recommendation !== null) {
+                $recommended_bytes = ceil(($configured_bytes * ($usage_for_recommendation / 100)) / self::CACHE_TARGET_LOAD);
+            }
             $status = (($current !== null && $current > $settings['cache_threshold'])
                 || ($avg !== null && $avg > $settings['cache_threshold'])) ? 'Avaliar ajuste' : 'OK';
             if ($only_findings && $status !== 'Avaliar ajuste') {
@@ -499,9 +545,21 @@ class ProxyHealthView extends CController {
                 'current' => $current,
                 'avg30d' => $avg,
                 'config_param' => $param,
-                'config_value' => $param !== '' ? self::value($cfg_items[$param]['lastvalue'] ?? null) : null,
+                'config_bytes_param' => $bytes_param,
+                'recommended_param' => $recommended_param,
+                'config_value' => self::value($configured_value),
+                'config_bytes' => $configured_bytes,
+                'recommended_bytes' => $recommended_bytes,
                 'status' => $status,
-                'finding' => $status === 'Avaliar ajuste' ? $name.' acima do threshold de caches' : ''
+                'finding' => $status === 'Avaliar ajuste'
+                    ? $name.' acima do threshold de caches'
+                    : '',
+                'action' => $status === 'Avaliar ajuste'
+                    ? ($param !== ''
+                        ? sprintf('%s: avaliar ajuste de %s (configurado=%s; recomendado bytes=%s)',
+                            $name, $param, self::displayValue($configured_value), self::displayValue($recommended_bytes))
+                        : $name.' acima do threshold; parametro nao mapeado')
+                    : 'Dentro dos limites configurados'
             ];
         }
         return $rows;
@@ -765,6 +823,37 @@ class ProxyHealthView extends CController {
     private static function value($value) {
         $num = self::num($value);
         return $num ?? $value;
+    }
+
+    private static function positiveNum($value): ?float {
+        $num = self::num($value);
+        return $num !== null && $num > 0 ? $num : null;
+    }
+
+    private static function sizeToBytes($value): ?float {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+        if (preg_match('/^\s*(\d+(?:\.\d+)?)\s*([KMGT]?B?|[KMGT])?\s*$/i', (string) $value, $matches) !== 1) {
+            return null;
+        }
+        $unit = strtoupper($matches[2] ?? 'B');
+        if (in_array($unit, ['K', 'M', 'G', 'T'], true)) {
+            $unit .= 'B';
+        }
+        $multipliers = [
+            'B' => 1,
+            'KB' => 1024,
+            'MB' => 1024 ** 2,
+            'GB' => 1024 ** 3,
+            'TB' => 1024 ** 4
+        ];
+        return isset($multipliers[$unit])
+            ? round((float) $matches[1] * $multipliers[$unit])
+            : null;
     }
 
     private static function displayValue($value): string {
