@@ -526,15 +526,18 @@ class ProxyHealthView extends CController {
                 ? self::positiveNum($cfg_items[$bytes_param]['lastvalue'] ?? null)
                 : null;
             $configured_bytes = $configured_bytes ?? self::sizeToBytes($configured_value);
-            $recommended_bytes = $recommended_param !== ''
-                ? self::positiveNum($cfg_items[$recommended_param]['lastvalue'] ?? null)
-                : null;
-            $usage_for_recommendation = self::maxNum([$current, $avg]);
-            if ($recommended_bytes === null && $configured_bytes !== null && $usage_for_recommendation !== null) {
-                $recommended_bytes = ceil(($configured_bytes * ($usage_for_recommendation / 100)) / self::CACHE_TARGET_LOAD);
-            }
             $status = (($current !== null && $current > $settings['cache_threshold'])
                 || ($avg !== null && $avg > $settings['cache_threshold'])) ? 'Avaliar ajuste' : 'OK';
+            $recommended_bytes = null;
+            if ($status === 'Avaliar ajuste') {
+                $recommended_bytes = $recommended_param !== ''
+                    ? self::positiveNum($cfg_items[$recommended_param]['lastvalue'] ?? null)
+                    : null;
+                $usage_for_recommendation = self::maxNum([$current, $avg]);
+                if ($recommended_bytes === null && $configured_bytes !== null && $usage_for_recommendation !== null) {
+                    $recommended_bytes = ceil(($configured_bytes * ($usage_for_recommendation / 100)) / self::CACHE_TARGET_LOAD);
+                }
+            }
             if ($only_findings && $status !== 'Avaliar ajuste') {
                 continue;
             }

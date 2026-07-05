@@ -736,9 +736,11 @@ def build_rows(data):
             usage_now = cache_used(cache_item.get("lastvalue"), mode)
             usage_avg = cache_used(data.get("trends30d", {}).get(cache_item["itemid"], {}).get("avg30d"), mode)
             usage_for_recommendation = max_of([usage_now, usage_avg])
-            recommended_bytes = positive_number(recommended.get("lastvalue")) if recommended else None
-            if recommended_bytes is None and configured_bytes is not None and usage_for_recommendation is not None:
-                recommended_bytes = math.ceil((configured_bytes * (usage_for_recommendation / 100)) / CACHE_TARGET_LOAD)
+            recommended_bytes = None
+            if usage_for_recommendation is not None and usage_for_recommendation > 75:
+                recommended_bytes = positive_number(recommended.get("lastvalue")) if recommended else None
+                if recommended_bytes is None and configured_bytes is not None:
+                    recommended_bytes = math.ceil((configured_bytes * (usage_for_recommendation / 100)) / CACHE_TARGET_LOAD)
             cache_config_rows.append({
                 "Host": host.get("name") or host.get("host"),
                 "Cache": cache_name,
