@@ -154,6 +154,10 @@ $export = (new CDiv([
             ->addClass('proxy-health-export-option')
             ->setAttribute('type', 'button')
             ->setAttribute('data-proxy-export', 'xls'),
+        (new CTag('button', true, _('XML')))
+            ->addClass('proxy-health-export-option')
+            ->setAttribute('type', 'button')
+            ->setAttribute('data-proxy-export', 'xml'),
         (new CTag('button', true, _('CSV')))
             ->addClass('proxy-health-export-option')
             ->setAttribute('type', 'button')

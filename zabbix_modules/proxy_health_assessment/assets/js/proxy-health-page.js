@@ -390,6 +390,15 @@
                 return;
             }
 
+            if (format === 'xml') {
+                this.downloadFile(
+                    `proxy_health_assessment_${stamp}.xml`,
+                    this.spreadsheetXml(),
+                    'application/xml;charset=utf-8'
+                );
+                return;
+            }
+
             if (format !== 'csv') {
                 return;
             }
