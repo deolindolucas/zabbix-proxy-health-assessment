@@ -376,9 +376,24 @@
         }
 
         exportReport(format) {
+            const stamp = new Date().toISOString()
+                .replace(/[-:]/g, '')
+                .replace(/\..+/, '')
+                .replace('T', '_');
+
+            if (format === 'xls') {
+                this.downloadFile(
+                    `proxy_health_assessment_${stamp}.xls`,
+                    this.spreadsheetXml(),
+                    'application/vnd.ms-excel;charset=utf-8'
+                );
+                return;
+            }
+
             if (format !== 'csv') {
                 return;
             }
+
             const rows = this.exportRows();
             const headers = [
                 'secao', 'proxy', 'parametro', 'leitura_atual', 'media_30d',
@@ -391,11 +406,32 @@
             ]
                 .map((row) => row.map((value) => this.csvEscape(value)).join(';'))
                 .join('\r\n');
-            const stamp = new Date().toISOString()
-                .replace(/[-:]/g, '')
-                .replace(/\..+/, '')
-                .replace('T', '_');
             this.downloadFile(`proxy_health_assessment_${stamp}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
+        }
+
+        usedConfigKeysByHost() {
+            const usedByHost = new Map();
+            const markUsed = (host, key) => {
+                if (!key) {
+                    return;
+                }
+                if (!usedByHost.has(host)) {
+                    usedByHost.set(host, new Set());
+                }
+                usedByHost.get(host).add(key);
+            };
+
+            this.data.process_config.forEach((row) => {
+                markUsed(row.host, row.config_param);
+                markUsed(row.host, row.recommended_param);
+            });
+            this.data.cache_config.forEach((row) => {
+                markUsed(row.host, row.config_param);
+                markUsed(row.host, row.config_bytes_param);
+                markUsed(row.host, row.recommended_param);
+            });
+
+            return usedByHost;
         }
 
         exportRows() {
@@ -461,25 +497,7 @@
                 acao_sugerida: cacheAction(row)
             }));
 
-            const usedByHost = new Map();
-            const markUsed = (host, key) => {
-                if (!key) {
-                    return;
-                }
-                if (!usedByHost.has(host)) {
-                    usedByHost.set(host, new Set());
-                }
-                usedByHost.get(host).add(key);
-            };
-            this.data.process_config.forEach((row) => {
-                markUsed(row.host, row.config_param);
-                markUsed(row.host, row.recommended_param);
-            });
-            this.data.cache_config.forEach((row) => {
-                markUsed(row.host, row.config_param);
-                markUsed(row.host, row.config_bytes_param);
-                markUsed(row.host, row.recommended_param);
-            });
+            const usedByHost = this.usedConfigKeysByHost();
             this.data.config_items.forEach((row) => {
                 if (usedByHost.get(row.host)?.has(row.key)) {
                     return;
@@ -497,9 +515,157 @@
             return rows;
         }
 
+        spreadsheetSheets() {
+            const usedByHost = this.usedConfigKeysByHost();
+
+            return [
+                {
+                    name: 'Overview',
+                    headers: [
+                        'Proxy', 'State', 'Score', 'Versao', 'VPS atual', 'Unsupported %',
+                        'CPU atual', 'Mem total GB', 'Mem atual', 'Mem media 30d',
+                        'Disco atual', 'Resumo'
+                    ],
+                    rows: this.data.proxies.map((proxy) => [
+                        proxy.host,
+                        proxy.state,
+                        proxy.score,
+                        proxy.version || '—',
+                        fmt(proxy.vps_current, 0),
+                        pct(proxy.unsupported_pct),
+                        fmt(proxy.cpu_current, 1, '%'),
+                        fmt(proxy.memory_total_gb, 1, ' GB'),
+                        fmt(proxy.memory_current, 1, '%'),
+                        fmt(proxy.memory_avg, 1, '%'),
+                        fmt(proxy.disk_current, 1, '%'),
+                        proxy.summary
+                    ])
+                },
+                {
+                    name: 'Processos Config',
+                    headers: [
+                        'Proxy', 'Parametro', 'Leitura atual', 'Media 30d',
+                        'Item de configuracao', 'Configurado', 'Recomendado',
+                        'Status', 'Acao sugerida'
+                    ],
+                    rows: this.data.process_config
+                        .filter((row) => row.status !== 'Sem parametro configuravel')
+                        .map((row) => [
+                            row.host,
+                            row.process,
+                            fmt(row.current, 1, '%'),
+                            fmt(row.avg30d, 1, '%'),
+                            row.config_param || '—',
+                            row.config_value ?? '—',
+                            row.recommended_value ?? '—',
+                            row.status,
+                            row.action || '—'
+                        ])
+                },
+                {
+                    name: 'Processos Internos',
+                    headers: ['Proxy', 'Parametro', 'Leitura atual', 'Media 30d', 'Status'],
+                    rows: this.data.process_config
+                        .filter((row) => row.status === 'Sem parametro configuravel')
+                        .map((row) => [
+                            row.host,
+                            row.process,
+                            fmt(row.current, 1, '%'),
+                            fmt(row.avg30d, 1, '%'),
+                            row.status
+                        ])
+                },
+                {
+                    name: 'Caches',
+                    headers: [
+                        'Proxy', 'Cache', 'Uso atual', 'Media 30d', 'Parametro',
+                        'Configurado', 'Recomendado', 'Status', 'Acao sugerida'
+                    ],
+                    rows: this.data.cache_config.map((row) => [
+                        row.host,
+                        row.cache,
+                        fmt(row.current, 1, '%'),
+                        fmt(row.avg30d, 1, '%'),
+                        row.config_param || '—',
+                        row.config_value ?? '—',
+                        row.status === 'Avaliar ajuste' ? humanBytes(row.recommended_bytes) : '—',
+                        row.status,
+                        cacheAction(row)
+                    ])
+                },
+                {
+                    name: 'Outras Configs',
+                    headers: ['Proxy', 'Parametro', 'Configurado', 'Estado'],
+                    rows: this.data.config_items
+                        .filter((row) => !usedByHost.get(row.host)?.has(row.key))
+                        .map((row) => [
+                            row.host,
+                            row.key || row.name,
+                            row.value ?? '—',
+                            row.state || ''
+                        ])
+                }
+            ];
+        }
+
+        spreadsheetXml() {
+            const worksheets = this.spreadsheetSheets()
+                .map((sheet) => this.worksheetXml(sheet.name, sheet.headers, sheet.rows))
+                .join('');
+
+            return [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<?mso-application progid="Excel.Sheet"?>',
+                '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"',
+                ' xmlns:o="urn:schemas-microsoft-com:office:office"',
+                ' xmlns:x="urn:schemas-microsoft-com:office:excel"',
+                ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">',
+                '<Styles>',
+                '<Style ss:ID="header"><Font ss:Bold="1"/><Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/></Style>',
+                '</Styles>',
+                worksheets,
+                '</Workbook>'
+            ].join('');
+        }
+
+        worksheetXml(name, headers, rows) {
+            const headerRow = `<Row>${headers.map((header) =>
+                `<Cell ss:StyleID="header"><Data ss:Type="String">${this.xmlEscape(header)}</Data></Cell>`
+            ).join('')}</Row>`;
+            const bodyRows = rows.map((row) =>
+                `<Row>${row.map((value) =>
+                    `<Cell><Data ss:Type="String">${this.xmlEscape(value)}</Data></Cell>`
+                ).join('')}</Row>`
+            ).join('');
+
+            return [
+                `<Worksheet ss:Name="${this.xmlEscape(this.sheetName(name))}">`,
+                '<Table>',
+                headerRow,
+                bodyRows,
+                '</Table>',
+                '</Worksheet>'
+            ].join('');
+        }
+
+        sheetName(name) {
+            return String(name)
+                .replace(/[\[\]:*?/\\]/g, ' ')
+                .slice(0, 31);
+        }
+
         csvEscape(value) {
             const text = String(value ?? '');
             return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        }
+
+        xmlEscape(value) {
+            return String(value ?? '')
+                .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
         }
 
         downloadFile(filename, content, type) {

@@ -142,7 +142,7 @@ $export = (new CDiv([
     (new CTag('button', true, _('Exportar Relatorio')))
         ->addClass('proxy-health-export-main')
         ->setAttribute('type', 'button')
-        ->setAttribute('data-proxy-export', 'csv'),
+        ->setAttribute('data-proxy-export', 'xls'),
     (new CTag('button', true, '▾'))
         ->addClass('proxy-health-export-toggle')
         ->setAttribute('type', 'button')
@@ -150,6 +150,10 @@ $export = (new CDiv([
         ->setAttribute('aria-label', _('Selecionar formato de exportacao'))
         ->setAttribute('aria-expanded', 'false'),
     (new CDiv([
+        (new CTag('button', true, _('XLS')))
+            ->addClass('proxy-health-export-option')
+            ->setAttribute('type', 'button')
+            ->setAttribute('data-proxy-export', 'xls'),
         (new CTag('button', true, _('CSV')))
             ->addClass('proxy-health-export-option')
             ->setAttribute('type', 'button')
