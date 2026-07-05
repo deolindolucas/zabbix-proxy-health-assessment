@@ -390,6 +390,33 @@
     opacity: .72;
 }
 
+.proxy-health-rules {
+    display: grid;
+    gap: 12px;
+    max-width: 980px;
+}
+
+.proxy-health-rule-section {
+    padding: 12px;
+    border: 1px solid var(--ph-border);
+    border-radius: 6px;
+    background: var(--ph-panel);
+}
+
+.proxy-health-rule-title {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.proxy-health-rule-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 18px;
+    line-height: 1.4;
+}
+
 @media (max-width: 900px) {
     .proxy-health-topbar,
     .proxy-health-kpis {

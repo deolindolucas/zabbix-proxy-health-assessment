@@ -77,6 +77,16 @@ $block = static function(string $title, array $fields, $toggle = null): CDiv {
         ->addClass('proxy-health-config-block');
 };
 
+$rules_section = static function(string $title, array $items): CDiv {
+    return (new CDiv([
+        (new CTag('h3', true, $title))->addClass('proxy-health-rule-title'),
+        (new CTag('ul', true, array_map(
+            static fn(string $item): CTag => new CTag('li', true, $item),
+            $items
+        )))->addClass('proxy-health-rule-list')
+    ]))->addClass('proxy-health-rule-section');
+};
+
 $config_form = (new CForm('get'))
     ->setName('proxy_health_config_form')
     ->setId('proxy-health-config-form')
@@ -120,6 +130,11 @@ $tabs = (new CDiv([
         ->addClass('proxy-health-tab')
         ->setAttribute('type', 'button')
         ->setAttribute('data-proxy-tab', 'config')
+        ->setAttribute('aria-pressed', 'false'),
+    (new CTag('button', true, _('Regras de Negocio')))
+        ->addClass('proxy-health-tab')
+        ->setAttribute('type', 'button')
+        ->setAttribute('data-proxy-tab', 'rules')
         ->setAttribute('aria-pressed', 'false')
 ]))->addClass('proxy-health-tabs');
 
@@ -184,8 +199,61 @@ $config = (new CDiv([
     $config_form
 ]))->addClass('proxy-health-pane')->setAttribute('data-proxy-pane', 'config');
 
+$rules = (new CDiv([
+    (new CDiv([
+        (new CTag('h2', true, _('Regras de Negocio')))->addClass('proxy-health-title'),
+        (new CDiv(_('Criterios tecnicos usados para leitura, avaliacao e interpretacao da saude dos proxies.')))
+            ->addClass('proxy-health-muted')
+    ]))->addClass('proxy-health-heading'),
+
+    (new CDiv([
+        $rules_section(_('Pre-requisitos'), [
+            _('Os proxies devem estar em um Host Group selecionavel pelo widget; por padrao e usado Zabbix/Proxies.'),
+            _('Hosts desabilitados ou proxies sem acesso recente acima do limite configurado ficam fora do assessment.'),
+            _('As metricas de saude dependem dos itens internos do Zabbix Proxy e de itens basicos do sistema operacional, como CPU, memoria e disco.'),
+            _('As configuracoes do proxy dependem de itens com chave num.* coletando valores do arquivo zabbix_proxy.conf, incluindo fallbacks/defaults quando aplicavel.'),
+            _('Medias de 30 dias dependem da retencao de trends do Zabbix e da existencia de historico suficiente para os itens numericos.')
+        ]),
+        $rules_section(_('Como as leituras sao realizadas'), [
+            _('A coleta parte do Host Group selecionado e busca hosts habilitados, itens relevantes, problems ativos, triggers e trends de 30 dias.'),
+            _('Problemas ativos sao separados entre problemas validos e problemas orfaos quando a trigger ou item associado esta desabilitado ou sem contexto valido.'),
+            _('Disco usa vfs.fs.size[/,pused] quando existe; caso contrario, usa pfree convertido ou o filesystem percentual mais relevante encontrado.'),
+            _('Processos internos usam zabbix[process,<processo>,avg,busy]; esse valor ja representa o busy do pool e nao deve ser dividido pela quantidade configurada.'),
+            _('Caches padronizam pfree como uso = 100 - pfree e pused como uso direto.')
+        ]),
+        $rules_section(_('Como as avaliacoes sao feitas'), [
+            _('O score parte de 100 e sofre penalizacoes por sinais que podem afetar a capacidade do proxy coletar, processar ou enviar dados.'),
+            _('Alertas Disaster e alertas relevantes de saude do proxy reduzem score; problemas comuns dos hosts monitorados nao reduzem score por volume bruto.'),
+            _('Versao abaixo do patch minimo, unsupported acima do limite, VPS acima do limite, CPU, memoria, disco e filas acima dos thresholds reduzem score.'),
+            _('Problemas orfaos so entram no score quando o bloco correspondente esta habilitado na configuracao.'),
+            _('Config issues so reduzem score quando o bloco de configuracao do proxy esta habilitado e ha processos/caches acima dos thresholds.')
+        ]),
+        $rules_section(_('Processos versus configuracao'), [
+            _('Processos com parametro configuravel sao comparados com a diretiva equivalente do zabbix_proxy.conf, como StartPollers, StartPreprocessors, StartSNMPPollers e StartTrappers.'),
+            _('Managers e processos internos sem diretiva de quantidade, como internal poller, task manager, self-monitoring e preprocessing manager, sao exibidos apenas como leitura operacional.'),
+            _('Avaliar aumento ocorre quando busy atual ou media 30d ultrapassa o threshold de pollers.'),
+            _('Avaliar diminuicao ocorre quando o configurado esta acima do recomendado e a media 30d esta baixa, ou quando uso atual e media 30d sao zero e o configurado e maior que 1.'),
+            _('A recomendacao de diminuicao para pool sem uso e limitada a 1 processo, independente do recomendado calculado.')
+        ]),
+        $rules_section(_('Caches versus configuracao'), [
+            _('Caches sao avaliados por uso atual e media 30d contra o threshold de caches.'),
+            _('Quando o cache esta OK, nao ha recomendacao de ajuste; a coluna Recomendado permanece vazia.'),
+            _('Quando o cache passa do threshold, o recomendado usa o item num.recomendado.* quando valido ou calcula localmente com carga desejada de 60%.'),
+            _('Valores configurados como 8M, 16M ou 1G sao convertidos para bytes no backend e apresentados em unidade humana no frontend.'),
+            _('Proxy memory buffer e outros caches sem parametro configuravel sao exibidos como leitura de apoio, sem recomendacao de configuracao quando nao ha diretiva equivalente.')
+        ]),
+        $rules_section(_('Boas praticas reforcadas'), [
+            _('Manter proxies em versoes recentes e acima do patch minimo definido para o ambiente.'),
+            _('Manter unsupported abaixo do percentual definido, pois itens nao suportados indicam perda de cobertura ou coleta incorreta.'),
+            _('Observar VPS junto com CPU, memoria, disco, filas e busy dos processos para evitar conclusoes isoladas.'),
+            _('Aumentar pollers ou caches apenas quando ha pressao operacional medida, evitando superdimensionamento sem uso.'),
+            _('Revisar periodicamente processos com uso zero e quantidade configurada alta para reduzir complexidade operacional.')
+        ])
+    ]))->addClass('proxy-health-rules')
+]))->addClass('proxy-health-pane')->setAttribute('data-proxy-pane', 'rules');
+
 $page->addItem(
-    (new CDiv([$tabs, $overview, $config]))
+    (new CDiv([$tabs, $overview, $config, $rules]))
         ->setId('proxy-health-assessment')
         ->addClass('proxy-health')
         ->setAttribute('data-proxy-health-payload', $data['payload'])
