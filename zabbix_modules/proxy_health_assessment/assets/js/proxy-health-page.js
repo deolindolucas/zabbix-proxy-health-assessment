@@ -399,6 +399,20 @@
                 return;
             }
 
+            if (format === 'xlsx') {
+                const workbook = this.xlsxWorkbook();
+                if (workbook === null) {
+                    return;
+                }
+
+                this.downloadFile(
+                    `proxy_health_assessment_${stamp}.xlsx`,
+                    workbook,
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                );
+                return;
+            }
+
             if (format !== 'csv') {
                 return;
             }
@@ -522,6 +536,33 @@
             });
 
             return rows;
+        }
+
+        xlsxWorkbook() {
+            if (typeof XLSX === 'undefined') {
+                window.alert('Biblioteca de exportacao XLSX nao carregada.');
+                return null;
+            }
+
+            const workbook = XLSX.utils.book_new();
+            this.spreadsheetSheets().forEach((sheet) => {
+                const worksheet = XLSX.utils.aoa_to_sheet([sheet.headers, ...sheet.rows]);
+                const widths = sheet.headers.map((header, index) => {
+                    const values = [header, ...sheet.rows.map((row) => row[index] ?? '')];
+                    const max = values.reduce((length, value) =>
+                        Math.max(length, String(value).length),
+                    10);
+
+                    return {wch: Math.min(Math.max(max + 2, 12), 80)};
+                });
+                worksheet['!cols'] = widths;
+                XLSX.utils.book_append_sheet(workbook, worksheet, this.sheetName(sheet.name));
+            });
+
+            return XLSX.write(workbook, {
+                bookType: 'xlsx',
+                type: 'array'
+            });
         }
 
         spreadsheetSheets() {

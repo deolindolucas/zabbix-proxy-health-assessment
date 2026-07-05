@@ -150,6 +150,10 @@ $export = (new CDiv([
         ->setAttribute('aria-label', _('Selecionar formato de exportacao'))
         ->setAttribute('aria-expanded', 'false'),
     (new CDiv([
+        (new CTag('button', true, _('XLSX')))
+            ->addClass('proxy-health-export-option')
+            ->setAttribute('type', 'button')
+            ->setAttribute('data-proxy-export', 'xlsx'),
         (new CTag('button', true, _('XLS')))
             ->addClass('proxy-health-export-option')
             ->setAttribute('type', 'button')
