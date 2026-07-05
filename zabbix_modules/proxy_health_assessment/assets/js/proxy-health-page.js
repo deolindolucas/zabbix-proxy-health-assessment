@@ -10,17 +10,42 @@
     };
 
     const pct = (value) => value === null || value === undefined ? '—' : `${(Number(value) * 100).toFixed(2)}%`;
-    const bytes = (value) => {
+    const humanBytes = (value) => {
         if (value === null || value === undefined || value === '') {
             return '—';
         }
         const number = Number(value);
-        return Number.isFinite(number) ? number.toLocaleString('pt-BR') : String(value);
+        if (!Number.isFinite(number)) {
+            return String(value);
+        }
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let current = Math.abs(number);
+        let unit = 0;
+        while (current >= 1024 && unit < units.length - 1) {
+            current /= 1024;
+            unit += 1;
+        }
+        const signed = number < 0 ? -current : current;
+        const digits = unit === 0 || current >= 100 ? 0 : 1;
+        return `${signed.toLocaleString('pt-BR', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits
+        })} ${units[unit]}`;
     };
     const normalize = (value) => String(value ?? '')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLocaleLowerCase();
+    const cacheAction = (row) => {
+        if (row.status !== 'Avaliar ajuste') {
+            return row.action || row.finding || '—';
+        }
+        if (!row.config_param) {
+            return row.action || row.finding || '—';
+        }
+        return `${row.cache}: avaliar ajuste de ${row.config_param} `
+            + `(configurado=${row.config_value ?? '—'}; recomendado=${humanBytes(row.recommended_bytes)})`;
+    };
 
     class ProxyHealthPage {
         constructor(root) {
@@ -190,8 +215,8 @@
                 }
             });
 
-            const processRows = this.data.process_config
-                .filter((row) => row.host === host)
+            const configurableProcessRows = processConfig
+                .filter((row) => row.status !== 'Sem parametro configuravel')
                 .map((row) => [
                     row.process,
                     fmt(row.current, 1, '%'),
@@ -202,23 +227,35 @@
                     row.status,
                     row.action || '—'
                 ]);
+            const nonConfigurableProcessRows = processConfig
+                .filter((row) => row.status === 'Sem parametro configuravel')
+                .map((row) => [
+                    row.process,
+                    fmt(row.current, 1, '%'),
+                    fmt(row.avg30d, 1, '%'),
+                    row.status
+                ]);
             const otherConfigRows = this.data.config_items
                 .filter((row) => row.host === host && !usedConfigKeys.has(row.key))
                 .map((row) => [row.key || row.name, row.value ?? '—']);
 
             wrapper.append(
-                this.detailTable('Processos e configuracao equivalente',
+                this.detailTable('Pollers e processos com configuracao equivalente',
                     ['Parametro', 'Leitura atual', 'Media 30d', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
-                    processRows
+                    configurableProcessRows
+                ),
+                this.detailTable('Demais processos internos',
+                    ['Parametro', 'Leitura atual', 'Media 30d', 'Status'],
+                    nonConfigurableProcessRows
                 ),
                 this.detailTable('Caches versus configuracao',
-                    ['Cache', 'Uso atual', 'Media 30d', 'Parametro', 'Configurado', 'Configurado bytes', 'Recomendado bytes', 'Status', 'Acao sugerida'],
+                    ['Cache', 'Uso atual', 'Media 30d', 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     cacheConfig
                         .map((row) => [
                             row.cache, fmt(row.current, 1, '%'), fmt(row.avg30d, 1, '%'),
                             row.config_param || '—', row.config_value ?? '—',
-                            bytes(row.config_bytes), bytes(row.recommended_bytes),
-                            row.status, row.action || row.finding || '—'
+                            humanBytes(row.recommended_bytes),
+                            row.status, cacheAction(row)
                         ])
                 ),
                 this.detailTable('Outras configuracoes coletadas',
