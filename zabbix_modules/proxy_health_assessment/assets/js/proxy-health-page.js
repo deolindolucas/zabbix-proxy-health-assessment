@@ -56,9 +56,12 @@
             this.data = JSON.parse(new TextDecoder('utf-8').decode(bytes));
             this.search = root.querySelector('#proxy-health-search');
             this.cards = root.querySelector('#proxy-health-cards');
+            this.exportMenu = root.querySelector('[data-proxy-export-menu]');
+            this.exportToggle = root.querySelector('[data-proxy-export-toggle]');
             this.expanded = new Set();
 
             root.addEventListener('click', (event) => this.onClick(event));
+            document.addEventListener('click', (event) => this.onDocumentClick(event));
             this.search?.addEventListener('input', () => this.render());
 
             this.render();
@@ -68,6 +71,19 @@
             const tab = event.target.closest('[data-proxy-tab]');
             if (tab && this.root.contains(tab)) {
                 this.selectTab(tab.dataset.proxyTab);
+                return;
+            }
+
+            const exportButton = event.target.closest('[data-proxy-export]');
+            if (exportButton && this.root.contains(exportButton)) {
+                this.closeExportMenu();
+                this.exportReport(exportButton.dataset.proxyExport);
+                return;
+            }
+
+            const exportToggle = event.target.closest('[data-proxy-export-toggle]');
+            if (exportToggle && this.root.contains(exportToggle)) {
+                this.toggleExportMenu();
                 return;
             }
 
@@ -89,6 +105,23 @@
                 }
                 this.render();
             }
+        }
+
+        onDocumentClick(event) {
+            if (!this.root.contains(event.target)) {
+                this.closeExportMenu();
+            }
+        }
+
+        toggleExportMenu() {
+            const open = !this.exportMenu?.classList.contains('is-open');
+            this.exportMenu?.classList.toggle('is-open', open);
+            this.exportToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+
+        closeExportMenu() {
+            this.exportMenu?.classList.remove('is-open');
+            this.exportToggle?.setAttribute('aria-expanded', 'false');
         }
 
         selectTab(name) {
@@ -340,6 +373,145 @@
         }
 
         renderConfigTables() {
+        }
+
+        exportReport(format) {
+            if (format !== 'csv') {
+                return;
+            }
+            const rows = this.exportRows();
+            const headers = [
+                'secao', 'proxy', 'parametro', 'leitura_atual', 'media_30d',
+                'item_configuracao', 'configurado', 'recomendado', 'status',
+                'acao_sugerida', 'valor', 'resumo'
+            ];
+            const csv = [
+                headers,
+                ...rows.map((row) => headers.map((header) => row[header] ?? ''))
+            ]
+                .map((row) => row.map((value) => this.csvEscape(value)).join(';'))
+                .join('\r\n');
+            const stamp = new Date().toISOString()
+                .replace(/[-:]/g, '')
+                .replace(/\..+/, '')
+                .replace('T', '_');
+            this.downloadFile(`proxy_health_assessment_${stamp}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
+        }
+
+        exportRows() {
+            const rows = [];
+            const add = (row) => rows.push(row);
+
+            this.data.proxies.forEach((proxy) => {
+                [
+                    ['State', proxy.state],
+                    ['Score', proxy.score],
+                    ['Versao', proxy.version || '—'],
+                    ['VPS atual', fmt(proxy.vps_current, 0)],
+                    ['Unsupported %', pct(proxy.unsupported_pct)],
+                    ['CPU atual', fmt(proxy.cpu_current, 1, '%')],
+                    ['Memoria total', fmt(proxy.memory_total_gb, 1, ' GB')],
+                    ['Memoria atual', fmt(proxy.memory_current, 1, '%')],
+                    ['Memoria media 30d', fmt(proxy.memory_avg, 1, '%')],
+                    ['Disco atual', fmt(proxy.disk_current, 1, '%')]
+                ].forEach(([parameter, value]) => add({
+                    secao: 'Overview',
+                    proxy: proxy.host,
+                    parametro: parameter,
+                    valor: value,
+                    status: proxy.state,
+                    resumo: proxy.summary
+                }));
+                add({
+                    secao: 'Overview',
+                    proxy: proxy.host,
+                    parametro: 'Resumo',
+                    valor: proxy.summary,
+                    status: proxy.state,
+                    resumo: proxy.summary
+                });
+            });
+
+            this.data.process_config.forEach((row) => {
+                const configurable = row.status !== 'Sem parametro configuravel';
+                add({
+                    secao: configurable ? 'Processos configuraveis' : 'Processos internos',
+                    proxy: row.host,
+                    parametro: row.process,
+                    leitura_atual: fmt(row.current, 1, '%'),
+                    media_30d: fmt(row.avg30d, 1, '%'),
+                    item_configuracao: configurable ? (row.config_param || '—') : '',
+                    configurado: configurable ? (row.config_value ?? '—') : '',
+                    recomendado: configurable ? (row.recommended_value ?? '—') : '',
+                    status: row.status,
+                    acao_sugerida: configurable ? (row.action || '—') : ''
+                });
+            });
+
+            this.data.cache_config.forEach((row) => add({
+                secao: 'Caches',
+                proxy: row.host,
+                parametro: row.cache,
+                leitura_atual: fmt(row.current, 1, '%'),
+                media_30d: fmt(row.avg30d, 1, '%'),
+                item_configuracao: row.config_param || '—',
+                configurado: row.config_value ?? '—',
+                recomendado: humanBytes(row.recommended_bytes),
+                status: row.status,
+                acao_sugerida: cacheAction(row)
+            }));
+
+            const usedByHost = new Map();
+            const markUsed = (host, key) => {
+                if (!key) {
+                    return;
+                }
+                if (!usedByHost.has(host)) {
+                    usedByHost.set(host, new Set());
+                }
+                usedByHost.get(host).add(key);
+            };
+            this.data.process_config.forEach((row) => {
+                markUsed(row.host, row.config_param);
+                markUsed(row.host, row.recommended_param);
+            });
+            this.data.cache_config.forEach((row) => {
+                markUsed(row.host, row.config_param);
+                markUsed(row.host, row.config_bytes_param);
+                markUsed(row.host, row.recommended_param);
+            });
+            this.data.config_items.forEach((row) => {
+                if (usedByHost.get(row.host)?.has(row.key)) {
+                    return;
+                }
+                add({
+                    secao: 'Outras configuracoes',
+                    proxy: row.host,
+                    parametro: row.key || row.name,
+                    configurado: row.value ?? '—',
+                    valor: row.value ?? '—',
+                    status: row.state || ''
+                });
+            });
+
+            return rows;
+        }
+
+        csvEscape(value) {
+            const text = String(value ?? '');
+            return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        }
+
+        downloadFile(filename, content, type) {
+            const blob = new Blob([content], {type});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.append(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
         }
 
         replaceRows(name, rows, mapper) {

@@ -138,6 +138,29 @@ $tabs = (new CDiv([
         ->setAttribute('aria-pressed', 'false')
 ]))->addClass('proxy-health-tabs');
 
+$export = (new CDiv([
+    (new CTag('button', true, _('Exportar Relatorio')))
+        ->addClass('proxy-health-export-main')
+        ->setAttribute('type', 'button')
+        ->setAttribute('data-proxy-export', 'csv'),
+    (new CTag('button', true, '▾'))
+        ->addClass('proxy-health-export-toggle')
+        ->setAttribute('type', 'button')
+        ->setAttribute('data-proxy-export-toggle', '1')
+        ->setAttribute('aria-label', _('Selecionar formato de exportacao'))
+        ->setAttribute('aria-expanded', 'false'),
+    (new CDiv([
+        (new CTag('button', true, _('CSV')))
+            ->addClass('proxy-health-export-option')
+            ->setAttribute('type', 'button')
+            ->setAttribute('data-proxy-export', 'csv')
+    ]))
+        ->addClass('proxy-health-export-menu')
+        ->setAttribute('data-proxy-export-menu', '1')
+]))->addClass('proxy-health-export');
+
+$toolbar = (new CDiv([$tabs, $export]))->addClass('proxy-health-toolbar');
+
 $overview = (new CDiv([
     (new CDiv([
         (new CDiv([
@@ -253,7 +276,7 @@ $rules = (new CDiv([
 ]))->addClass('proxy-health-pane')->setAttribute('data-proxy-pane', 'rules');
 
 $page->addItem(
-    (new CDiv([$tabs, $overview, $config, $rules]))
+    (new CDiv([$toolbar, $overview, $config, $rules]))
         ->setId('proxy-health-assessment')
         ->addClass('proxy-health')
         ->setAttribute('data-proxy-health-payload', $data['payload'])
