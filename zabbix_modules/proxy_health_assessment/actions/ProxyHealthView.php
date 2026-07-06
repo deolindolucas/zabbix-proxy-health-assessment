@@ -18,7 +18,8 @@ class ProxyHealthView extends CController {
     private const IMPORTANT_KEYS = [
         'agent.ping', 'system.cpu.load[all,avg1]', 'system.cpu.num', 'system.cpu.util',
         'system.uptime', 'vm.memory.size[total]', 'vm.memory.size[pavailable]', 'vm.memory.size[pused]',
-        'vm.memory.utilization', 'proc.num[zabbix_proxy]', 'zabbix[uptime]',
+        'vm.memory.utilization', 'vfs.fs.size[/,pused]', 'vfs.fs.size[/,pfree]',
+        'proc.num[zabbix_proxy]', 'zabbix[uptime]',
         'zabbix[version]', 'zabbix[hosts]', 'zabbix[items]', 'zabbix[items_unsupported]',
         'zabbix[requiredperformance]', 'zabbix[preprocessing_queue]', 'zabbix[queue,10m]',
         'zabbix[proxy,{HOST.HOST}, lastaccess]', 'zabbix[proxy_buffer,state,current]',
@@ -101,6 +102,7 @@ class ProxyHealthView extends CController {
     protected function checkInput(): bool {
         $valid = $this->validateInput([
             'host_groupid' => 'string',
+            'zabbix_server_hostid' => 'string',
             'version_cut' => 'string',
             'patch_min' => 'string',
             'unsupported_max' => 'string',
@@ -174,6 +176,7 @@ class ProxyHealthView extends CController {
 
     private function settings(): array {
         $host_groupid = $this->inputHostGroupId();
+        $zabbix_server_hostid = $this->inputHostId('zabbix_server_hostid');
         $unsupported_max_percent = $this->inputNum('unsupported_max', 2);
         if ($unsupported_max_percent > 0 && $unsupported_max_percent < 1) {
             $unsupported_max_percent *= 100;
@@ -182,6 +185,8 @@ class ProxyHealthView extends CController {
         return [
             'host_groupid' => $host_groupid,
             'host_group_name' => $this->hostGroupName($host_groupid),
+            'zabbix_server_hostid' => $zabbix_server_hostid,
+            'zabbix_server_host_name' => $this->hostName($zabbix_server_hostid),
             'version_cut' => $this->getInput('version_cut', '7.0.20'),
             'patch_min' => $this->inputNum('patch_min', 20),
             'unsupported_max' => $unsupported_max_percent / 100,
@@ -209,25 +214,43 @@ class ProxyHealthView extends CController {
 
     private function collect(array $settings): array {
         $now = time();
-        if ($settings['host_groupid'] === '') {
-            return [
-                'proxies' => [],
-                'config_items' => [],
-                'process_config' => [],
-                'cache_config' => [],
-                'orphans' => [],
-                'active_problems' => [],
-                'excluded_offline' => []
-            ];
+
+        $hosts = [];
+        if ($settings['host_groupid'] !== '') {
+            $hosts = API::Host()->get([
+                'output' => ['hostid', 'host', 'name', 'status', 'available'],
+                'selectInterfaces' => ['ip', 'dns', 'type', 'main', 'useip'],
+                'groupids' => [$settings['host_groupid']],
+                'sortfield' => 'name'
+            ]);
         }
 
-        $hosts = API::Host()->get([
-            'output' => ['hostid', 'host', 'name', 'status', 'available'],
-            'selectInterfaces' => ['ip', 'dns', 'type', 'main', 'useip'],
-            'groupids' => [$settings['host_groupid']],
-            'sortfield' => 'name'
-        ]);
-        $hosts = array_values(array_filter($hosts, static fn(array $host): bool => $host['status'] === '0'));
+        $hosts_by_id = [];
+        foreach (array_values(array_filter($hosts, static fn(array $host): bool => $host['status'] === '0')) as $host) {
+            $host['_assessment_role'] = 'proxy';
+            $hosts_by_id[$host['hostid']] = $host;
+        }
+
+        if ($settings['zabbix_server_hostid'] !== '') {
+            $server_hosts = API::Host()->get([
+                'output' => ['hostid', 'host', 'name', 'status', 'available'],
+                'selectInterfaces' => ['ip', 'dns', 'type', 'main', 'useip'],
+                'hostids' => [$settings['zabbix_server_hostid']],
+                'limit' => 1
+            ]);
+
+            if ($server_hosts && $server_hosts[0]['status'] === '0') {
+                $server_hosts[0]['_assessment_role'] = 'server';
+                $hosts_by_id[$server_hosts[0]['hostid']] = $server_hosts[0];
+            }
+        }
+
+        $hosts = array_values($hosts_by_id);
+        usort($hosts, static fn(array $a, array $b): int =>
+            (($a['_assessment_role'] ?? 'proxy') === 'server' ? 0 : 1)
+                <=> (($b['_assessment_role'] ?? 'proxy') === 'server' ? 0 : 1)
+            ?: strnatcasecmp($a['name'] ?: $a['host'], $b['name'] ?: $b['host'])
+        );
         $hostids = array_column($hosts, 'hostid');
 
         if (!$hostids) {
@@ -312,7 +335,10 @@ class ProxyHealthView extends CController {
         }
 
         usort($proxies, static fn(array $a, array $b): int =>
-            ($a['score'] <=> $b['score']) ?: strnatcasecmp($a['host'], $b['host'])
+            (($a['assessment_role'] ?? 'proxy') === 'server' ? 0 : 1)
+                <=> (($b['assessment_role'] ?? 'proxy') === 'server' ? 0 : 1)
+            ?: ($a['score'] <=> $b['score'])
+            ?: strnatcasecmp($a['host'], $b['host'])
         );
 
         return [
@@ -340,8 +366,12 @@ class ProxyHealthView extends CController {
         $cpu_avg = $avg('system.cpu.util');
         $mem_current = $value('vm.memory.size[pused]') ?? $value('vm.memory.utilization');
         $mem_avg = $avg('vm.memory.size[pused]') ?? $avg('vm.memory.utilization');
-        $disk_current = $value('vfs.fs.size[/,pused]');
-        $disk_avg = $avg('vfs.fs.size[/,pused]');
+        $disk_pfree_current = $value('vfs.fs.size[/,pfree]');
+        $disk_pfree_avg = $avg('vfs.fs.size[/,pfree]');
+        $disk_current = $value('vfs.fs.size[/,pused]')
+            ?? ($disk_pfree_current !== null ? 100 - $disk_pfree_current : null);
+        $disk_avg = $avg('vfs.fs.size[/,pused]')
+            ?? ($disk_pfree_avg !== null ? 100 - $disk_pfree_avg : null);
         $lastaccess = $value('zabbix[proxy,{HOST.HOST}, lastaccess]');
         $lastaccess_age = $lastaccess !== null ? max(0, $now - (int) $lastaccess) : null;
         $process_findings = $this->buildProcessRows($host, $items, $cfg_items, $trends, $settings, true);
@@ -401,6 +431,7 @@ class ProxyHealthView extends CController {
             'hostid' => $host['hostid'],
             'host' => $host['name'] ?: $host['host'],
             'technical_name' => $host['host'],
+            'assessment_role' => $host['_assessment_role'] ?? 'proxy',
             'interface' => $this->hostInterface($host),
             'score' => $score,
             'state' => $state,
@@ -464,15 +495,29 @@ class ProxyHealthView extends CController {
             }
             $action = '';
             if ($status === 'Avaliar aumento') {
-                $action = sprintf(_('Aumentar numero de pollers (configurado=%s, recomendado=%s)'),
-                    self::displayValue($config_value), self::displayValue($recommended_value));
+                $action = sprintf(_('%s: aumentar quantidade configurada (parametro=%s; configurado=%s; recomendado=%s; atual=%s%%; media 30d=%s%%)'),
+                    $process,
+                    $param,
+                    self::displayValue($config_value),
+                    self::displayValue($recommended_value),
+                    self::displayValue($current),
+                    self::displayValue($avg)
+                );
             }
             elseif ($status === 'Avaliar diminuicao') {
                 $action = $current === 0.0 && $avg === 0.0 && $config_value !== null && $config_value > 1
-                    ? sprintf(_('Diminuir numero de pollers para 1 (sem uso atual ou media 30d; configurado=%s)'),
-                        self::displayValue($config_value))
-                    : sprintf(_('Diminuir numero de pollers (configurado=%s, recomendado=%s)'),
-                        self::displayValue($config_value), self::displayValue($recommended_value));
+                    ? sprintf(_('%s: diminuir quantidade configurada para 1 (parametro=%s; sem uso atual ou media 30d; configurado=%s)'),
+                        $process,
+                        $param,
+                        self::displayValue($config_value)
+                    )
+                    : sprintf(_('%s: avaliar diminuicao da quantidade configurada (parametro=%s; configurado=%s; recomendado=%s; media 30d=%s%%)'),
+                        $process,
+                        $param,
+                        self::displayValue($config_value),
+                        self::displayValue($recommended_value),
+                        self::displayValue($avg)
+                    );
             }
             if ($only_findings && $status !== 'Avaliar aumento') {
                 continue;
@@ -490,7 +535,7 @@ class ProxyHealthView extends CController {
                 'status' => $status,
                 'action' => $action,
                 'finding' => $status === 'Avaliar aumento'
-                    ? sprintf(_('%s acima do threshold de pollers'), $process)
+                    ? sprintf(_('%s: uso acima do threshold de processos'), $process)
                     : ''
             ];
         }
@@ -802,6 +847,15 @@ class ProxyHealthView extends CController {
         return $groups ? (string) $groups[0]['groupid'] : '';
     }
 
+    private function inputHostId(string $name): string {
+        $input = $this->getInput($name, '');
+        if (is_array($input)) {
+            $input = reset($input) ?: '';
+        }
+
+        return (string) $input;
+    }
+
     private function hostGroupName(string $groupid): string {
         if ($groupid === '') {
             return self::DEFAULT_HOST_GROUP;
@@ -814,6 +868,20 @@ class ProxyHealthView extends CController {
         ]);
 
         return $groups ? (string) $groups[0]['name'] : self::DEFAULT_HOST_GROUP;
+    }
+
+    private function hostName(string $hostid): string {
+        if ($hostid === '') {
+            return '';
+        }
+
+        $hosts = API::Host()->get([
+            'output' => ['hostid', 'host', 'name'],
+            'hostids' => [$hostid],
+            'limit' => 1
+        ]);
+
+        return $hosts ? (string) ($hosts[0]['name'] ?: $hosts[0]['host']) : '';
     }
 
     private static function num($value): ?float {

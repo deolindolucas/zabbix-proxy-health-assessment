@@ -46,6 +46,37 @@
         return `${row.cache}: avaliar ajuste de ${row.config_param} `
             + `(configurado=${row.config_value ?? '—'}; recomendado=${humanBytes(row.recommended_bytes)})`;
     };
+    const splitSummary = (summary) => {
+        const parts = [];
+        let current = '';
+        let depth = 0;
+
+        String(summary || '').split('').forEach((character) => {
+            if (character === '(') {
+                depth += 1;
+            }
+            else if (character === ')' && depth > 0) {
+                depth -= 1;
+            }
+
+            if (character === ';' && depth === 0) {
+                if (current.trim() !== '') {
+                    parts.push(current.trim());
+                }
+                current = '';
+                return;
+            }
+
+            current += character;
+        });
+
+        if (current.trim() !== '') {
+            parts.push(current.trim());
+        }
+
+        return parts;
+    };
+    const objectType = (proxy) => proxy.assessment_role === 'server' ? 'Zabbix Server' : 'Zabbix Proxy';
 
     class ProxyHealthPage {
         constructor(root) {
@@ -192,18 +223,17 @@
 
                 const meta = document.createElement('div');
                 meta.className = 'proxy-health-card-meta';
-                meta.textContent = `Versao ${proxy.version || '—'} · VPS ${fmt(proxy.vps_current, 0)} · Mem ${fmt(proxy.memory_total_gb, 1, ' GB')}`;
+                meta.textContent = `${objectType(proxy)} · Versao ${proxy.version || '—'} · VPS ${fmt(proxy.vps_current, 0)} · Mem ${fmt(proxy.memory_total_gb, 1, ' GB')}`;
 
                 const bars = document.createElement('div');
                 bars.className = 'proxy-health-bars';
                 [
                     ['CPU', proxy.cpu_current],
                     ['Memoria', proxy.memory_current],
-                    ['Disco', proxy.disk_current]
+                    ['Disco', proxy.disk_current ?? proxy.disk_avg]
                 ].forEach(([label, value]) => bars.append(this.bar(label, value)));
 
-                const summary = document.createElement('p');
-                summary.textContent = proxy.summary;
+                const summary = this.summaryCards(proxy.summary);
 
                 const toggle = document.createElement('button');
                 toggle.type = 'button';
@@ -358,6 +388,7 @@
         renderOverviewTable(proxies) {
             this.replaceRows('overview', proxies, (proxy) => [
                 proxy.host,
+                objectType(proxy),
                 proxy.state,
                 proxy.score,
                 proxy.version || '—',
@@ -381,24 +412,6 @@
                 .replace(/\..+/, '')
                 .replace('T', '_');
 
-            if (format === 'xls') {
-                this.downloadFile(
-                    `proxy_health_assessment_${stamp}.xls`,
-                    this.spreadsheetXml(),
-                    'application/vnd.ms-excel;charset=utf-8'
-                );
-                return;
-            }
-
-            if (format === 'xml') {
-                this.downloadFile(
-                    `proxy_health_assessment_${stamp}.xml`,
-                    this.spreadsheetXml(),
-                    'application/xml;charset=utf-8'
-                );
-                return;
-            }
-
             if (format === 'xlsx') {
                 const workbook = this.xlsxWorkbook();
                 if (workbook === null) {
@@ -419,7 +432,7 @@
 
             const rows = this.exportRows();
             const headers = [
-                'secao', 'proxy', 'parametro', 'leitura_atual', 'media_30d',
+                'secao', 'proxy', 'tipo', 'parametro', 'leitura_atual', 'media_30d',
                 'item_configuracao', 'configurado', 'recomendado', 'status',
                 'acao_sugerida', 'valor', 'resumo'
             ];
@@ -476,6 +489,7 @@
                 ].forEach(([parameter, value]) => add({
                     secao: 'Overview',
                     proxy: proxy.host,
+                    tipo: objectType(proxy),
                     parametro: parameter,
                     valor: value,
                     status: proxy.state,
@@ -484,6 +498,7 @@
                 add({
                     secao: 'Overview',
                     proxy: proxy.host,
+                    tipo: objectType(proxy),
                     parametro: 'Resumo',
                     valor: proxy.summary,
                     status: proxy.state,
@@ -538,6 +553,56 @@
             return rows;
         }
 
+        summaryCards(summaryText) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'proxy-health-summary-cards';
+
+            splitSummary(summaryText).forEach((summary) => {
+                const card = document.createElement('div');
+                card.className = 'proxy-health-summary-card';
+
+                const title = document.createElement('strong');
+                const detail = document.createElement('span');
+                const parts = this.summaryParts(summary);
+
+                title.textContent = parts.title;
+                detail.textContent = parts.detail;
+                card.append(title, detail);
+                wrapper.append(card);
+            });
+
+            return wrapper;
+        }
+
+        summaryParts(summary) {
+            const colon = summary.indexOf(':');
+            if (colon > 0 && colon < 60) {
+                return {
+                    title: summary.slice(0, colon).trim(),
+                    detail: summary.slice(colon + 1).trim()
+                };
+            }
+
+            const normalized = normalize(summary);
+            const known = [
+                ['disco', 'Disco'],
+                ['cpu', 'CPU'],
+                ['memoria', 'Memoria'],
+                ['preprocessing queue', 'Preprocessing queue'],
+                ['fila', 'Fila'],
+                ['unsupported', 'Itens unsupported'],
+                ['versao', 'Versao'],
+                ['alerta', 'Alerta'],
+                ['vps', 'VPS']
+            ];
+            const matched = known.find(([needle]) => normalized.includes(needle));
+
+            return {
+                title: matched ? matched[1] : 'Resumo',
+                detail: summary
+            };
+        }
+
         xlsxWorkbook() {
             if (typeof XLSX === 'undefined') {
                 window.alert('Biblioteca de exportacao XLSX nao carregada.');
@@ -572,12 +637,13 @@
                 {
                     name: 'Overview',
                     headers: [
-                        'Proxy', 'State', 'Score', 'Versao', 'VPS atual', 'Unsupported %',
+                        'Proxy', 'Tipo', 'State', 'Score', 'Versao', 'VPS atual', 'Unsupported %',
                         'CPU atual', 'Mem total GB', 'Mem atual', 'Mem media 30d',
                         'Disco atual', 'Resumo'
                     ],
                     rows: this.data.proxies.map((proxy) => [
                         proxy.host,
+                        objectType(proxy),
                         proxy.state,
                         proxy.score,
                         proxy.version || '—',
@@ -658,46 +724,6 @@
             ];
         }
 
-        spreadsheetXml() {
-            const worksheets = this.spreadsheetSheets()
-                .map((sheet) => this.worksheetXml(sheet.name, sheet.headers, sheet.rows))
-                .join('');
-
-            return [
-                '<?xml version="1.0" encoding="UTF-8"?>',
-                '<?mso-application progid="Excel.Sheet"?>',
-                '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"',
-                ' xmlns:o="urn:schemas-microsoft-com:office:office"',
-                ' xmlns:x="urn:schemas-microsoft-com:office:excel"',
-                ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">',
-                '<Styles>',
-                '<Style ss:ID="header"><Font ss:Bold="1"/><Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/></Style>',
-                '</Styles>',
-                worksheets,
-                '</Workbook>'
-            ].join('');
-        }
-
-        worksheetXml(name, headers, rows) {
-            const headerRow = `<Row>${headers.map((header) =>
-                `<Cell ss:StyleID="header"><Data ss:Type="String">${this.xmlEscape(header)}</Data></Cell>`
-            ).join('')}</Row>`;
-            const bodyRows = rows.map((row) =>
-                `<Row>${row.map((value) =>
-                    `<Cell><Data ss:Type="String">${this.xmlEscape(value)}</Data></Cell>`
-                ).join('')}</Row>`
-            ).join('');
-
-            return [
-                `<Worksheet ss:Name="${this.xmlEscape(this.sheetName(name))}">`,
-                '<Table>',
-                headerRow,
-                bodyRows,
-                '</Table>',
-                '</Worksheet>'
-            ].join('');
-        }
-
         sheetName(name) {
             return String(name)
                 .replace(/[\[\]:*?/\\]/g, ' ')
@@ -707,15 +733,6 @@
         csvEscape(value) {
             const text = String(value ?? '');
             return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-        }
-
-        xmlEscape(value) {
-            return String(value ?? '')
-                .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
         }
 
         downloadFile(filename, content, type) {
@@ -739,7 +756,7 @@
             if (rows.length === 0) {
                 const row = document.createElement('tr');
                 const cell = document.createElement('td');
-                cell.colSpan = 12;
+                cell.colSpan = 13;
                 cell.textContent = 'Sem dados.';
                 row.append(cell);
                 tbody.append(row);

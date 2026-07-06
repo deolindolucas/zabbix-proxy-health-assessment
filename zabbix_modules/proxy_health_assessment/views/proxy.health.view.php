@@ -65,6 +65,32 @@ $host_group_select = static function(array $settings) use ($field): CDiv {
     );
 };
 
+$zabbix_server_host_select = static function(array $settings) use ($field): CDiv {
+    $selected = $settings['zabbix_server_hostid'] !== ''
+        ? [['id' => $settings['zabbix_server_hostid'], 'name' => $settings['zabbix_server_host_name']]]
+        : [];
+
+    return $field(
+        (new CLabel(_('Zabbix Server'), 'zabbix_server_hostid')),
+        (new CMultiSelect([
+            'name' => 'zabbix_server_hostid',
+            'object_name' => 'hosts',
+            'data' => $selected,
+            'multiple' => false,
+            'popup' => [
+                'parameters' => [
+                    'srctbl' => 'hosts',
+                    'srcfld1' => 'hostid',
+                    'dstfrm' => 'proxy_health_config_form',
+                    'dstfld1' => 'zabbix_server_hostid',
+                    'real_hosts' => '1'
+                ]
+            ]
+        ]))
+            ->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
+    );
+};
+
 $block = static function(string $title, array $fields, $toggle = null): CDiv {
     if ($toggle !== null) {
         array_unshift($fields, $toggle);
@@ -95,6 +121,7 @@ $config_form = (new CForm('get'))
     ->addItem([
         $block(_('Coleta'), [
             $host_group_select($settings),
+            $zabbix_server_host_select($settings),
             $input(_('Versao de corte'), 'version_cut', $settings['version_cut']),
             $input(_('Patch minimo'), 'patch_min', $settings['patch_min'], 'number'),
             $input(_('Ultimo acesso maximo (s)'), 'lastaccess_max', $settings['lastaccess_max'], 'number')
@@ -142,7 +169,7 @@ $export = (new CDiv([
     (new CTag('button', true, _('Exportar Relatorio')))
         ->addClass('proxy-health-export-main')
         ->setAttribute('type', 'button')
-        ->setAttribute('data-proxy-export', 'xls'),
+        ->setAttribute('data-proxy-export', 'xlsx'),
     (new CTag('button', true, '▾'))
         ->addClass('proxy-health-export-toggle')
         ->setAttribute('type', 'button')
@@ -154,14 +181,6 @@ $export = (new CDiv([
             ->addClass('proxy-health-export-option')
             ->setAttribute('type', 'button')
             ->setAttribute('data-proxy-export', 'xlsx'),
-        (new CTag('button', true, _('XLS')))
-            ->addClass('proxy-health-export-option')
-            ->setAttribute('type', 'button')
-            ->setAttribute('data-proxy-export', 'xls'),
-        (new CTag('button', true, _('XML')))
-            ->addClass('proxy-health-export-option')
-            ->setAttribute('type', 'button')
-            ->setAttribute('data-proxy-export', 'xml'),
         (new CTag('button', true, _('CSV')))
             ->addClass('proxy-health-export-option')
             ->setAttribute('type', 'button')
@@ -200,7 +219,7 @@ $overview = (new CDiv([
         : null,
 
     (new CDiv([
-        (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'total'), (new CDiv(_('Proxies avaliados')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi'),
+        (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'total'), (new CDiv(_('Objetos avaliados')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi'),
         (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'ok'), (new CDiv(_('OK')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi is-ok'),
         (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'attention'), (new CDiv(_('Atencao')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi is-attention'),
         (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'risk'), (new CDiv(_('Risco/Critico')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi is-risk')
@@ -213,6 +232,7 @@ $overview = (new CDiv([
         (new CTag('table', true, [
             (new CTag('thead', true, new CTag('tr', true, [
                 new CTag('th', true, _('Proxy')),
+                new CTag('th', true, _('Tipo')),
                 new CTag('th', true, _('State')),
                 new CTag('th', true, _('Score')),
                 new CTag('th', true, _('Versao')),
@@ -244,6 +264,7 @@ $rules = (new CDiv([
     (new CDiv([
         $rules_section(_('Pre-requisitos'), [
             _('Os proxies devem estar em um Host Group selecionavel pelo widget; por padrao e usado Zabbix/Proxies.'),
+            _('O Zabbix Server pode ser selecionado opcionalmente na aba de configuracao e, quando selecionado, entra como primeiro objeto do assessment.'),
             _('Hosts desabilitados ou proxies sem acesso recente acima do limite configurado ficam fora do assessment.'),
             _('As metricas de saude dependem dos itens internos do Zabbix Proxy e de itens basicos do sistema operacional, como CPU, memoria e disco.'),
             _('As configuracoes do proxy dependem de itens com chave num.* coletando valores do arquivo zabbix_proxy.conf, incluindo fallbacks/defaults quando aplicavel.'),
@@ -262,6 +283,12 @@ $rules = (new CDiv([
             _('Versao abaixo do patch minimo, unsupported acima do limite, VPS acima do limite, CPU, memoria, disco e filas acima dos thresholds reduzem score.'),
             _('Problemas orfaos so entram no score quando o bloco correspondente esta habilitado na configuracao.'),
             _('Config issues so reduzem score quando o bloco de configuracao do proxy esta habilitado e ha processos/caches acima dos thresholds.')
+        ]),
+        $rules_section(_('Zabbix Server'), [
+            _('O host do Zabbix Server deve ser selecionado manualmente na configuracao quando tambem deve entrar no assessment.'),
+            _('O host selecionado deve possuir monitoramento Linux default, health check do Zabbix Server e o template custom de leitura de configuracao para que as metricas sejam completas.'),
+            _('Quando selecionado, o Zabbix Server e sempre exibido antes dos proxies nas listas, detalhes e exportacoes.'),
+            _('As mesmas regras de score, capacidade, processos, caches, problemas ativos e configuracoes coletadas sao reaproveitadas para o Zabbix Server quando houver itens equivalentes.')
         ]),
         $rules_section(_('Processos versus configuracao'), [
             _('Processos com parametro configuravel sao comparados com a diretiva equivalente do zabbix_proxy.conf, como StartPollers, StartPreprocessors, StartSNMPPollers e StartTrappers.'),
