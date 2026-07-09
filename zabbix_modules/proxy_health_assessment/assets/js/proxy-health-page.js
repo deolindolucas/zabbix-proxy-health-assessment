@@ -81,27 +81,159 @@
     class ProxyHealthPage {
         constructor(root) {
             this.root = root;
-            const bytes = Uint8Array.from(atob(root.dataset.proxyHealthPayload), (character) =>
-                character.charCodeAt(0)
-            );
-            this.data = JSON.parse(new TextDecoder('utf-8').decode(bytes));
+            this.data = this.decodePayload(root.dataset.proxyHealthPayload);
             this.search = root.querySelector('#proxy-health-search');
             this.cards = root.querySelector('#proxy-health-cards');
             this.exportMenu = root.querySelector('[data-proxy-export-menu]');
             this.exportToggle = root.querySelector('[data-proxy-export-toggle]');
             this.expanded = new Set();
+            this.loading = this.createLoadingState();
+            this.kpiFilter = null;
+            this.excludedOpen = false;
 
             root.addEventListener('click', (event) => this.onClick(event));
+            root.addEventListener('keydown', (event) => this.onKeyDown(event));
             document.addEventListener('click', (event) => this.onDocumentClick(event));
             this.search?.addEventListener('input', () => this.render());
 
             this.render();
+            if (root.dataset.proxyHealthAsync === '1') {
+                this.loadAssessment();
+            }
+        }
+
+        decodePayload(payload) {
+            if (!payload) {
+                return {
+                    proxies: [],
+                    config_items: [],
+                    process_config: [],
+                    cache_config: [],
+                    orphans: [],
+                    active_problems: [],
+                    excluded_offline: [],
+                    settings: {}
+                };
+            }
+            const bytes = Uint8Array.from(atob(payload), (character) => character.charCodeAt(0));
+            return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+        }
+
+        createLoadingState() {
+            const panel = document.createElement('div');
+            panel.className = 'proxy-health-loading';
+            panel.innerHTML = `
+                <div class="proxy-health-loading-title">Coletando assessment</div>
+                <div class="proxy-health-loading-step" data-proxy-loading-step>Preparando requisicao</div>
+                <div class="proxy-health-loading-bar"><span data-proxy-loading-bar style="width: 8%"></span></div>
+                <div class="proxy-health-loading-percent" data-proxy-loading-percent>8%</div>
+            `;
+            this.root.prepend(panel);
+            return {
+                panel,
+                step: panel.querySelector('[data-proxy-loading-step]'),
+                bar: panel.querySelector('[data-proxy-loading-bar]'),
+                percent: panel.querySelector('[data-proxy-loading-percent]')
+            };
+        }
+
+        setLoading(step, percent) {
+            if (!this.loading) {
+                return;
+            }
+            this.loading.step.textContent = step;
+            this.loading.bar.style.width = `${percent}%`;
+            this.loading.percent.textContent = `${percent}%`;
+        }
+
+        async fetchAssessmentStage(stage, params = {}) {
+            const url = new URL(window.location.href);
+            const body = new URLSearchParams();
+            body.set('proxy_async', '1');
+            body.set('proxy_stage', stage);
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== null && value !== undefined) {
+                    body.set(key, value);
+                }
+            });
+
+            const response = await fetch(url.toString(), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+                body
+            });
+            const html = await response.text();
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const freshRoot = doc.querySelector('[data-proxy-health-payload]');
+            if (!freshRoot) {
+                throw new Error('Payload do assessment nao encontrado na resposta');
+            }
+            const payload = this.decodePayload(freshRoot.dataset.proxyHealthPayload);
+            if (payload.error) {
+                throw new Error(payload.exception || payload.error);
+            }
+            return payload;
+        }
+
+        async loadAssessment() {
+            try {
+                this.setLoading('Preparando hosts, itens e configuracoes', 8);
+                const init = await this.fetchAssessmentStage('init');
+                let cursor = Number(init.cursor || 0);
+                const total = Number(init.trend_items || 0);
+                const clientState = init.client_state;
+                const trendState = init.trend_state;
+                const trendStats = {};
+                const trendDays = Number(init.settings?.trend_days || this.data.settings?.trend_days || 30);
+
+                if (!clientState || !trendState) {
+                    throw new Error('Estado da coleta nao retornado pelo backend');
+                }
+
+                while (cursor < total) {
+                    const percent = total > 0 ? Math.min(82, 18 + Math.round((cursor / total) * 64)) : 82;
+                    const batches = init.total_batches ? ` (${Math.ceil(cursor / Number(init.batch_size || 30))}/${init.total_batches})` : '';
+                    this.setLoading(`Coletando trends de ${trendDays} dias${batches}`, percent);
+                    const trend = await this.fetchAssessmentStage('trend', {
+                        proxy_trend_state: trendState,
+                        proxy_cursor: String(cursor)
+                    });
+                    Object.assign(trendStats, trend.trend_stats || {});
+                    cursor = Number(trend.cursor || cursor);
+                    if (trend.done || cursor >= total) {
+                        break;
+                    }
+                }
+
+                this.setLoading('Consolidando score e recomendacoes', 88);
+                this.data = await this.fetchAssessmentStage('finalize', {
+                    proxy_state: clientState,
+                    proxy_trends: JSON.stringify(trendStats)
+                });
+                this.setLoading('Renderizando painel', 100);
+                this.render();
+                window.setTimeout(() => this.loading?.panel.remove(), 450);
+            }
+            catch (error) {
+                this.setLoading(`Falha na coleta: ${error.message}`, 100);
+                this.loading?.panel.classList.add('is-error');
+            }
         }
 
         onClick(event) {
             const tab = event.target.closest('[data-proxy-tab]');
             if (tab && this.root.contains(tab)) {
                 this.selectTab(tab.dataset.proxyTab);
+                return;
+            }
+
+            const kpi = event.target.closest('[data-proxy-kpi-filter]');
+            if (kpi && this.root.contains(kpi)) {
+                this.toggleKpiFilter(kpi.dataset.proxyKpiFilter);
                 return;
             }
 
@@ -138,6 +270,14 @@
             }
         }
 
+        onKeyDown(event) {
+            const kpi = event.target.closest('[data-proxy-kpi-filter]');
+            if (kpi && this.root.contains(kpi) && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                this.toggleKpiFilter(kpi.dataset.proxyKpiFilter);
+            }
+        }
+
         onDocumentClick(event) {
             if (!this.root.contains(event.target)) {
                 this.closeExportMenu();
@@ -166,7 +306,20 @@
             });
         }
 
-        filteredProxies() {
+        toggleKpiFilter(name) {
+            if (name === 'excluded') {
+                this.excludedOpen = !this.excludedOpen;
+                this.kpiFilter = null;
+                this.render();
+                return;
+            }
+
+            this.excludedOpen = false;
+            this.kpiFilter = this.kpiFilter === name ? null : name;
+            this.render();
+        }
+
+        searchFilteredProxies() {
             const needle = normalize(this.search?.value ?? '');
             return this.data.proxies.filter((proxy) =>
                 needle === ''
@@ -175,9 +328,30 @@
             );
         }
 
+        filteredProxies(proxies) {
+            if (!this.kpiFilter || this.kpiFilter === 'total') {
+                return proxies;
+            }
+
+            return proxies.filter((proxy) => {
+                if (this.kpiFilter === 'ok') {
+                    return proxy.state === 'OK';
+                }
+                if (this.kpiFilter === 'attention') {
+                    return proxy.state === 'Atencao';
+                }
+                if (this.kpiFilter === 'risk') {
+                    return proxy.state === 'Risco' || proxy.state === 'Critico';
+                }
+                return true;
+            });
+        }
+
         render() {
-            const proxies = this.filteredProxies();
-            this.renderKpis(proxies);
+            const baseProxies = this.searchFilteredProxies();
+            const proxies = this.filteredProxies(baseProxies);
+            this.renderKpis(baseProxies);
+            this.renderExcludedPanel();
             this.renderCards(proxies);
             this.renderOverviewTable(proxies);
             this.renderConfigTables();
@@ -188,7 +362,8 @@
                 total: proxies.length,
                 ok: proxies.filter((proxy) => proxy.state === 'OK').length,
                 attention: proxies.filter((proxy) => proxy.state === 'Atencao').length,
-                risk: proxies.filter((proxy) => proxy.state === 'Risco' || proxy.state === 'Critico').length
+                risk: proxies.filter((proxy) => proxy.state === 'Risco' || proxy.state === 'Critico').length,
+                excluded: (this.data.excluded_offline || []).length
             };
             Object.entries(counts).forEach(([key, value]) => {
                 const target = this.root.querySelector(`[data-proxy-kpi="${key}"]`);
@@ -196,6 +371,89 @@
                     target.textContent = String(value);
                 }
             });
+            this.root.querySelectorAll('[data-proxy-kpi-filter]').forEach((card) => {
+                const selected = card.dataset.proxyKpiFilter === 'excluded'
+                    ? this.excludedOpen
+                    : this.kpiFilter === card.dataset.proxyKpiFilter;
+                card.classList.toggle('is-selected', selected);
+                card.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
+        }
+
+        renderExcludedPanel() {
+            const panel = this.root.querySelector('[data-proxy-excluded-panel]');
+            if (!panel) {
+                return;
+            }
+
+            panel.replaceChildren();
+            panel.classList.toggle('is-open', this.excludedOpen);
+            if (!this.excludedOpen) {
+                return;
+            }
+
+            const excluded = this.data.excluded_offline || [];
+            const title = document.createElement('h3');
+            title.textContent = 'Proxies fora do escopo';
+            panel.append(title);
+
+            if (excluded.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'proxy-health-muted';
+                empty.textContent = 'Nenhum proxy foi deixado de fora pelos filtros atuais.';
+                panel.append(empty);
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.className = 'proxy-health-table';
+            table.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Proxy</th>
+                        <th>Motivo</th>
+                        <th>Idade do ultimo acesso</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            `;
+            const tbody = table.querySelector('tbody');
+            excluded.forEach((row) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${this.escapeHtml(row.host || '—')}</td>
+                    <td>${this.escapeHtml(row.reason || '—')}</td>
+                    <td>${this.escapeHtml(this.ageLabel(row.lastaccess_age))}</td>
+                `;
+                tbody.append(tr);
+            });
+            panel.append(table);
+        }
+
+        ageLabel(seconds) {
+            const value = Number(seconds);
+            if (!Number.isFinite(value)) {
+                return '—';
+            }
+            if (value < 60) {
+                return `${Math.round(value)}s`;
+            }
+            if (value < 3600) {
+                return `${Math.round(value / 60)}min`;
+            }
+            if (value < 86400) {
+                return `${Math.round(value / 3600)}h`;
+            }
+            return `${Math.round(value / 86400)}d`;
+        }
+
+        escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
 
         renderCards(proxies) {
@@ -304,15 +562,15 @@
 
             wrapper.append(
                 this.detailTable('Pollers e processos com configuracao equivalente',
-                    ['Parametro', 'Leitura atual', 'Media 30d', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+                    ['Parametro', 'Leitura atual', 'Media trends', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     configurableProcessRows
                 ),
                 this.detailTable('Demais processos internos',
-                    ['Parametro', 'Leitura atual', 'Media 30d', 'Status'],
+                    ['Parametro', 'Leitura atual', 'Media trends', 'Status'],
                     nonConfigurableProcessRows
                 ),
                 this.detailTable('Caches versus configuracao',
-                    ['Cache', 'Uso atual', 'Media 30d', 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+                    ['Cache', 'Uso atual', 'Media trends', 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     cacheConfig
                         .map((row) => [
                             row.cache, fmt(row.current, 1, '%'), fmt(row.avg30d, 1, '%'),
@@ -432,7 +690,7 @@
 
             const rows = this.exportRows();
             const headers = [
-                'secao', 'proxy', 'tipo', 'parametro', 'leitura_atual', 'media_30d',
+                'secao', 'proxy', 'tipo', 'parametro', 'leitura_atual', 'media_trends',
                 'item_configuracao', 'configurado', 'recomendado', 'status',
                 'acao_sugerida', 'valor', 'resumo'
             ];
@@ -484,7 +742,7 @@
                     ['CPU atual', fmt(proxy.cpu_current, 1, '%')],
                     ['Memoria total', fmt(proxy.memory_total_gb, 1, ' GB')],
                     ['Memoria atual', fmt(proxy.memory_current, 1, '%')],
-                    ['Memoria media 30d', fmt(proxy.memory_avg, 1, '%')],
+                    ['Memoria media trends', fmt(proxy.memory_avg, 1, '%')],
                     ['Disco atual', fmt(proxy.disk_current, 1, '%')]
                 ].forEach(([parameter, value]) => add({
                     secao: 'Overview',
@@ -513,7 +771,7 @@
                     proxy: row.host,
                     parametro: row.process,
                     leitura_atual: fmt(row.current, 1, '%'),
-                    media_30d: fmt(row.avg30d, 1, '%'),
+                    media_trends: fmt(row.avg30d, 1, '%'),
                     item_configuracao: configurable ? (row.config_param || '—') : '',
                     configurado: configurable ? (row.config_value ?? '—') : '',
                     recomendado: configurable ? (row.recommended_value ?? '—') : '',
@@ -527,7 +785,7 @@
                 proxy: row.host,
                 parametro: row.cache,
                 leitura_atual: fmt(row.current, 1, '%'),
-                media_30d: fmt(row.avg30d, 1, '%'),
+                media_trends: fmt(row.avg30d, 1, '%'),
                 item_configuracao: row.config_param || '—',
                 configurado: row.config_value ?? '—',
                 recomendado: humanBytes(row.recommended_bytes),
@@ -547,6 +805,17 @@
                     configurado: row.value ?? '—',
                     valor: row.value ?? '—',
                     status: row.state || ''
+                });
+            });
+
+            (this.data.excluded_offline || []).forEach((row) => {
+                add({
+                    secao: 'Fora do escopo',
+                    proxy: row.host || '—',
+                    parametro: 'Motivo',
+                    valor: row.reason || '—',
+                    status: 'Fora do escopo',
+                    resumo: `${row.reason || '—'}; ultimo acesso=${this.ageLabel(row.lastaccess_age)}`
                 });
             });
 
@@ -638,7 +907,7 @@
                     name: 'Overview',
                     headers: [
                         'Proxy', 'Tipo', 'State', 'Score', 'Versao', 'VPS atual', 'Unsupported %',
-                        'CPU atual', 'Mem total GB', 'Mem atual', 'Mem media 30d',
+                        'CPU atual', 'Mem total GB', 'Mem atual', 'Mem media trends',
                         'Disco atual', 'Resumo'
                     ],
                     rows: this.data.proxies.map((proxy) => [
@@ -660,7 +929,7 @@
                 {
                     name: 'Processos Config',
                     headers: [
-                        'Proxy', 'Parametro', 'Leitura atual', 'Media 30d',
+                        'Proxy', 'Parametro', 'Leitura atual', 'Media trends',
                         'Item de configuracao', 'Configurado', 'Recomendado',
                         'Status', 'Acao sugerida'
                     ],
@@ -680,7 +949,7 @@
                 },
                 {
                     name: 'Processos Internos',
-                    headers: ['Proxy', 'Parametro', 'Leitura atual', 'Media 30d', 'Status'],
+                    headers: ['Proxy', 'Parametro', 'Leitura atual', 'Media trends', 'Status'],
                     rows: this.data.process_config
                         .filter((row) => row.status === 'Sem parametro configuravel')
                         .map((row) => [
@@ -694,7 +963,7 @@
                 {
                     name: 'Caches',
                     headers: [
-                        'Proxy', 'Cache', 'Uso atual', 'Media 30d', 'Parametro',
+                        'Proxy', 'Cache', 'Uso atual', 'Media trends', 'Parametro',
                         'Configurado', 'Recomendado', 'Status', 'Acao sugerida'
                     ],
                     rows: this.data.cache_config.map((row) => [
@@ -720,6 +989,15 @@
                             row.value ?? '—',
                             row.state || ''
                         ])
+                },
+                {
+                    name: 'Fora do Escopo',
+                    headers: ['Proxy', 'Motivo', 'Idade ultimo acesso'],
+                    rows: (this.data.excluded_offline || []).map((row) => [
+                        row.host || '—',
+                        row.reason || '—',
+                        this.ageLabel(row.lastaccess_age)
+                    ])
                 }
             ];
         }

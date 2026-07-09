@@ -107,6 +107,53 @@
     gap: 12px;
 }
 
+.proxy-health-loading {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid rgba(2, 123, 199, .36);
+    border-radius: 6px;
+    background: rgba(2, 123, 199, .10);
+    box-shadow: 0 0 16px rgba(2, 123, 199, .14);
+}
+
+.proxy-health-loading.is-error {
+    border-color: rgba(214, 93, 74, .52);
+    background: rgba(214, 93, 74, .12);
+    box-shadow: 0 0 16px rgba(214, 93, 74, .18);
+}
+
+.proxy-health-loading-title {
+    font-weight: 700;
+}
+
+.proxy-health-loading-step,
+.proxy-health-loading-percent {
+    opacity: .78;
+    font-size: 12px;
+}
+
+.proxy-health-loading-bar {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(128, 144, 160, .22);
+}
+
+.proxy-health-loading-bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #027bc7, #2eb3ff);
+    transition: width .22s ease;
+}
+
+.proxy-health-loading.is-error .proxy-health-loading-bar span {
+    background: linear-gradient(90deg, #d65d4a, #ff947f);
+}
+
 .proxy-health-topbar,
 .proxy-health-kpis,
 .proxy-health-cards {
@@ -152,7 +199,7 @@
 }
 
 .proxy-health-kpis {
-    grid-template-columns: repeat(4, minmax(140px, 1fr));
+    grid-template-columns: repeat(5, minmax(130px, 1fr));
 }
 
 .proxy-health-kpi,
@@ -167,18 +214,94 @@
 .proxy-health-kpi {
     padding: 12px;
     border-left: 4px solid var(--ph-accent);
+    cursor: pointer;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background-color .16s ease;
+    --ph-kpi-color: var(--ph-accent);
 }
 
 .proxy-health-kpi.is-ok {
     border-left-color: var(--ph-good);
+    --ph-kpi-color: var(--ph-good);
 }
 
 .proxy-health-kpi.is-attention {
     border-left-color: var(--ph-warn);
+    --ph-kpi-color: var(--ph-warn);
 }
 
 .proxy-health-kpi.is-risk {
     border-left-color: var(--ph-risk);
+    --ph-kpi-color: var(--ph-risk);
+}
+
+.proxy-health-kpi.is-excluded {
+    border-left-color: #7f8a96;
+    --ph-kpi-color: #7f8a96;
+}
+
+.proxy-health-kpi:hover,
+.proxy-health-kpi:focus-visible {
+    transform: translateY(-1px);
+    border-color: var(--ph-kpi-color);
+    box-shadow: 0 0 0 1px rgba(2, 123, 199, .28);
+    outline: none;
+}
+
+.proxy-health-kpi.is-selected {
+    transform: translateY(-2px) scale(1.015);
+    border-color: var(--ph-kpi-color);
+    background: rgba(2, 123, 199, .16);
+    box-shadow:
+        0 0 0 1px rgba(2, 123, 199, .48),
+        0 0 18px rgba(2, 123, 199, .34);
+}
+
+.proxy-health-kpi.is-ok:hover,
+.proxy-health-kpi.is-ok:focus-visible {
+    box-shadow: 0 0 0 1px rgba(38, 150, 111, .28);
+}
+
+.proxy-health-kpi.is-ok.is-selected {
+    background: rgba(38, 150, 111, .16);
+    box-shadow:
+        0 0 0 1px rgba(38, 150, 111, .48),
+        0 0 18px rgba(38, 150, 111, .34);
+}
+
+.proxy-health-kpi.is-attention:hover,
+.proxy-health-kpi.is-attention:focus-visible {
+    box-shadow: 0 0 0 1px rgba(211, 155, 32, .28);
+}
+
+.proxy-health-kpi.is-attention.is-selected {
+    background: rgba(211, 155, 32, .16);
+    box-shadow:
+        0 0 0 1px rgba(211, 155, 32, .5),
+        0 0 18px rgba(211, 155, 32, .36);
+}
+
+.proxy-health-kpi.is-risk:hover,
+.proxy-health-kpi.is-risk:focus-visible {
+    box-shadow: 0 0 0 1px rgba(214, 93, 74, .28);
+}
+
+.proxy-health-kpi.is-risk.is-selected {
+    background: rgba(214, 93, 74, .16);
+    box-shadow:
+        0 0 0 1px rgba(214, 93, 74, .5),
+        0 0 18px rgba(214, 93, 74, .36);
+}
+
+.proxy-health-kpi.is-excluded:hover,
+.proxy-health-kpi.is-excluded:focus-visible {
+    box-shadow: 0 0 0 1px rgba(127, 138, 150, .3);
+}
+
+.proxy-health-kpi.is-excluded.is-selected {
+    background: rgba(127, 138, 150, .16);
+    box-shadow:
+        0 0 0 1px rgba(127, 138, 150, .5),
+        0 0 18px rgba(127, 138, 150, .32);
 }
 
 .proxy-health-kpi-value {
@@ -193,6 +316,25 @@
 
 .proxy-health-cards {
     grid-template-columns: minmax(0, 1fr);
+}
+
+.proxy-health-excluded-panel {
+    display: none;
+    padding: 12px;
+    border: 1px solid var(--ph-border);
+    border-left: 4px solid #7f8a96;
+    border-radius: 6px;
+    background: var(--ph-panel);
+}
+
+.proxy-health-excluded-panel.is-open {
+    display: grid;
+    gap: 10px;
+}
+
+.proxy-health-excluded-panel h3 {
+    margin: 0;
+    font-size: 14px;
 }
 
 .proxy-health-card {
@@ -426,9 +568,10 @@
     display: flex;
     flex-direction: column;
     gap: 18px;
-    max-width: 640px;
+    width: min(100%, 860px);
+    max-width: 860px;
     margin: 0;
-    padding: 22px 12px;
+    padding: 22px 18px;
     border: 1px solid var(--ph-border);
     border-radius: 0;
     background: transparent;
@@ -447,9 +590,16 @@
 
 .proxy-health-config-field {
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) 170px;
-    gap: 10px;
+    grid-template-columns: minmax(260px, 1fr) minmax(220px, 270px);
+    gap: 14px;
     align-items: center;
+}
+
+.proxy-health-config-label {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
 }
 
 .proxy-health-config-form label {
@@ -457,6 +607,34 @@
     text-align: left;
     font-weight: 400;
     font-size: 12px;
+}
+
+.proxy-health-required {
+    margin-left: 2px;
+    color: #e45959;
+    font-weight: 700;
+}
+
+.proxy-health-help {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    border: 1px solid var(--ph-border);
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    opacity: .76;
+    cursor: help;
+}
+
+.proxy-health-help:hover,
+.proxy-health-help:focus-visible {
+    border-color: var(--ph-accent);
+    background: rgba(2, 123, 199, .16);
+    opacity: 1;
 }
 
 .proxy-health-config-form input,
