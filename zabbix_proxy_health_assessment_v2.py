@@ -7,10 +7,10 @@ Requirements:
 
 Example:
     python zabbix_proxy_health_assessment_v2.py ^
-      --api-url https://webmonitor.com.br ^
+      --api-url https://zabbix.example.com ^
       --token TOKEN ^
       --host-group "Zabbix/Proxies" ^
-      --output-xlsx webmonitor_proxy_health_assessment_v3_0.xlsx
+      --output-xlsx proxy_health_assessment_v3_0.xlsx
 """
 
 from __future__ import annotations

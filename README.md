@@ -72,16 +72,16 @@ Exemplo:
 
 ```bash
 python zabbix_proxy_health_assessment_v2.py \
-  --api-url https://webmonitor.com.br \
+  --api-url https://zabbix.example.com \
   --token "SEU_TOKEN" \
   --host-group "Zabbix/Proxies" \
-  --output-xlsx webmonitor_proxy_health_assessment_v3_0.xlsx
+  --output-xlsx proxy_health_assessment_v3_0.xlsx
 ```
 
 Tambem e aceito informar a URL completa da API:
 
 ```bash
---api-url https://webmonitor.com.br/api_jsonrpc.php
+--api-url https://zabbix.example.com/api_jsonrpc.php
 ```
 
 O script normaliza automaticamente para a URL base usada pela biblioteca oficial `zabbix-utils`.

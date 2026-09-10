@@ -361,11 +361,11 @@ def main() -> int:
         return 2
 
     settings = parse_request_url(args.url)
-    base_url = args.api_url or "https://webmonitor.com.br/api_jsonrpc.php"
+    base_url = args.api_url or "https://zabbix.example.com/api_jsonrpc.php"
     api = ZabbixApi(base_url, args.token, args.timeout)
     tracemalloc.start()
     start = time.perf_counter()
-    log("start", start, url_host=urlparse(args.url).netloc or "webmonitor.com.br", host_groupid=settings.get("host_groupid"), batch_size=args.batch_size)
+    log("start", start, url_host=urlparse(args.url).netloc or "zabbix.example.com", host_groupid=settings.get("host_groupid"), batch_size=args.batch_size)
 
     hosts = collect_hosts(api, settings, start)
     hostids = [host["hostid"] for host in hosts]
