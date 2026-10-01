@@ -481,6 +481,9 @@
         }
 
         ageLabel(seconds) {
+            if (seconds === null || seconds === undefined || seconds === '') {
+                return '—';
+            }
             const value = Number(seconds);
             if (!Number.isFinite(value)) {
                 return '—';
@@ -508,6 +511,11 @@
 
         renderCards(proxies) {
             this.cards.replaceChildren();
+
+            const notice = this.hostGroupNotice();
+            if (notice) {
+                this.cards.append(notice);
+            }
 
             if (proxies.length === 0) {
                 const empty = document.createElement('div');
@@ -543,6 +551,26 @@
 
             layout.append(queue, this.diagnosticPanel(selectedProxy));
             this.cards.append(layout);
+        }
+
+        hostGroupNotice() {
+            const settings = this.data.settings || {};
+            if (!settings.host_group_missing) {
+                return null;
+            }
+
+            const notice = document.createElement('div');
+            notice.className = 'proxy-health-notice';
+            notice.setAttribute('role', 'status');
+            const text = document.createElement('span');
+            text.textContent = `Nenhum host group de proxies definido: o grupo padrao "${settings.host_group_default || 'Zabbix/Proxies'}" nao existe neste Zabbix, entao nenhum proxy foi avaliado.`;
+            const action = document.createElement('button');
+            action.type = 'button';
+            action.className = 'proxy-health-notice-action';
+            action.dataset.proxyTab = 'config';
+            action.textContent = 'Escolher grupo na Configuracao';
+            notice.append(text, action);
+            return notice;
         }
 
         objectRow(proxy, selected) {
@@ -584,7 +612,9 @@
         }
 
         diagnosticPanel(proxy) {
-            const panel = document.createElement('aside');
+            // <section>, nao <aside>: o tema do Zabbix 8.0 aplica `aside { grid-area: sidebar }` globalmente
+            // e tiraria o painel da coluna do grid.
+            const panel = document.createElement('section');
             panel.className = `proxy-health-results-panel proxy-health-diagnostic is-${proxy.state.toLocaleLowerCase()}`;
 
             const head = document.createElement('div');
