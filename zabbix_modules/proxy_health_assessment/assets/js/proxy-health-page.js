@@ -79,7 +79,13 @@
     const objectType = (proxy) => proxy.assessment_role === 'server' ? 'Zabbix Server' : 'Zabbix Proxy';
     const stateClass = (state) => ({OK: 'ok', Atencao: 'attention', Risco: 'risk', Critico: 'critical'})[state] || 'ok';
     const stateLabel = (state) => ({OK: 'OK', Atencao: 'Atenção', Risco: 'Risco', Critico: 'Crítico'})[state] || state;
-    const points1 = (value) => fmt(value, Number(value) % 1 === 0 ? 0 : 1);
+    // Notas e descontos em pt-BR, com no maximo uma casa decimal ("62,1", "−7,8", "80").
+    const points1 = (value) => {
+        const number = Number(value);
+        return Number.isFinite(number)
+            ? number.toLocaleString('pt-BR', {maximumFractionDigits: 1})
+            : '—';
+    };
     const percentFormat = (value) => `${value.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}%`;
     const countFormat = (value) => Math.round(value).toLocaleString('pt-BR');
     // Colunas da tabela: campo do payload e os settings de atencao/critico usados na regua de cada barra.
@@ -651,7 +657,7 @@
             const scoreBox = document.createElement('div');
             scoreBox.className = 'proxy-health-score';
             const scoreValue = document.createElement('strong');
-            scoreValue.textContent = fmt(score, Number.isInteger(score) ? 0 : 1);
+            scoreValue.textContent = points1(score);
             const scoreSide = document.createElement('div');
             const stateText = document.createElement('span');
             stateText.className = 'proxy-health-state';
