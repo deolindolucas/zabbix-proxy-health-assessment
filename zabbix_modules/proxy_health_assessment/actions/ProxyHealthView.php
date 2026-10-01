@@ -1086,7 +1086,8 @@ class ProxyHealthView extends CController {
             $deduct(($orphan_count['disaster'] ?? 0) > 0, 50, _('Alerta Disaster orfao considerado'));
             $deduct(($orphan_count['relevant'] ?? 0) > 0, 20, _('Alerta de saude orfao considerado'));
         }
-        $deduct(self::versionPatch($version) !== null && self::versionPatch($version) < $settings['patch_min'], 15, _('Versao abaixo do corte'));
+        $deduct(self::versionBelowCut($version, $settings['version_cut'], (int) $settings['patch_min']), 15,
+            _('Versao abaixo do corte'));
         $deduct_scaled($unsupported_pct !== null ? $unsupported_pct * 100 : null, $settings['unsupported_max_percent'],
             $settings['unsupported_crit_percent'], 15, _('Itens unsupported acima do limite'));
         $deduct_scaled($vps_p95, $settings['vps_max'], $settings['vps_crit'], 10, _('VPS P95 acima do limite'));
@@ -1883,6 +1884,22 @@ class ProxyHealthView extends CController {
 
     private static function versionPatch(string $version): ?int {
         return preg_match('/^\d+\.\d+\.(\d+)/', $version, $matches) === 1 ? (int) $matches[1] : null;
+    }
+
+    /**
+     * Compara a versao completa com o corte (major.minor do version_cut + patch_min).
+     * Versoes de major/minor mais novos ficam acima do corte; pre-releases (alpha/beta/rc)
+     * ficam abaixo da release final de mesmo numero.
+     */
+    private static function versionBelowCut(string $version, string $version_cut, int $patch_min): bool {
+        if (preg_match('/^(\d+\.\d+\.\d+)\s*((?:alpha|beta|rc)\s*\d*)?/i', trim($version), $current) !== 1
+                || preg_match('/^(\d+)\.(\d+)/', trim($version_cut), $cut) !== 1) {
+            return false;
+        }
+
+        $current_version = $current[1].(isset($current[2]) ? strtolower(str_replace(' ', '', $current[2])) : '');
+
+        return version_compare($current_version, $cut[1].'.'.$cut[2].'.'.max(0, $patch_min), '<');
     }
 
     private static function processName(string $key): string {
