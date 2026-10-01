@@ -81,7 +81,15 @@
     class ProxyHealthPage {
         constructor(root) {
             this.root = root;
-            this.data = this.decodePayload(root.dataset.proxyHealthPayload);
+            this.bootError = null;
+            try {
+                this.data = this.decodePayload(root.dataset.proxyHealthPayload);
+            }
+            catch (error) {
+                console.error('Proxy Health Assessment: failed to decode initial payload.', error);
+                this.bootError = error;
+                this.data = this.emptyPayload();
+            }
             this.search = root.querySelector('#proxy-health-search');
             this.cards = root.querySelector('#proxy-health-cards');
             this.exportMenu = root.querySelector('[data-proxy-export-menu]');
@@ -90,6 +98,9 @@
             this.loading = this.createLoadingState();
             this.kpiFilter = null;
             this.excludedOpen = false;
+            this.selectedHost = null;
+            this.detailTabs = {};
+            this.consolidatedOpen = false;
 
             root.addEventListener('click', (event) => this.onClick(event));
             root.addEventListener('keydown', (event) => this.onKeyDown(event));
@@ -102,18 +113,22 @@
             }
         }
 
+        emptyPayload() {
+            return {
+                proxies: [],
+                config_items: [],
+                process_config: [],
+                cache_config: [],
+                orphans: [],
+                active_problems: [],
+                excluded_offline: [],
+                settings: {}
+            };
+        }
+
         decodePayload(payload) {
             if (!payload) {
-                return {
-                    proxies: [],
-                    config_items: [],
-                    process_config: [],
-                    cache_config: [],
-                    orphans: [],
-                    active_problems: [],
-                    excluded_offline: [],
-                    settings: {}
-                };
+                return this.emptyPayload();
             }
             const bytes = Uint8Array.from(atob(payload), (character) => character.charCodeAt(0));
             return JSON.parse(new TextDecoder('utf-8').decode(bytes));
@@ -257,6 +272,12 @@
                 return;
             }
 
+            if (event.target.closest('[data-proxy-consolidated-toggle]')) {
+                this.consolidatedOpen = !this.consolidatedOpen;
+                this.renderConsolidatedPanel();
+                return;
+            }
+
             const expand = event.target.closest('[data-proxy-expand]');
             if (expand && this.root.contains(expand)) {
                 const host = expand.dataset.proxyExpand;
@@ -266,6 +287,20 @@
                 else {
                     this.expanded.add(host);
                 }
+                this.render();
+                return;
+            }
+
+            const detailTab = event.target.closest('[data-proxy-detail-tab]');
+            if (detailTab && this.root.contains(detailTab)) {
+                this.detailTabs[detailTab.dataset.proxyHost] = detailTab.dataset.proxyDetailTab;
+                this.render();
+                return;
+            }
+
+            const selected = event.target.closest('[data-proxy-select]');
+            if (selected && this.root.contains(selected)) {
+                this.selectedHost = selected.dataset.proxySelect;
                 this.render();
             }
         }
@@ -354,7 +389,22 @@
             this.renderExcludedPanel();
             this.renderCards(proxies);
             this.renderOverviewTable(proxies);
+            this.renderConsolidatedPanel();
             this.renderConfigTables();
+        }
+
+        renderConsolidatedPanel() {
+            const panel = this.root.querySelector('[data-proxy-consolidated-panel]');
+            if (!panel) {
+                return;
+            }
+
+            const toggle = panel.querySelector('[data-proxy-consolidated-toggle]');
+            panel.classList.toggle('is-open', this.consolidatedOpen);
+            if (toggle) {
+                toggle.textContent = this.consolidatedOpen ? 'Ocultar detalhes' : 'Mostrar detalhes';
+                toggle.setAttribute('aria-expanded', this.consolidatedOpen ? 'true' : 'false');
+            }
         }
 
         renderKpis(proxies) {
@@ -467,47 +517,154 @@
                 return;
             }
 
+            if (!this.selectedHost || !proxies.some((proxy) => proxy.host === this.selectedHost)) {
+                this.selectedHost = proxies[0].host;
+            }
+
+            const selectedProxy = proxies.find((proxy) => proxy.host === this.selectedHost) || proxies[0];
+            const layout = document.createElement('div');
+            layout.className = 'proxy-health-results-layout';
+
+            const queue = document.createElement('section');
+            queue.className = 'proxy-health-results-panel proxy-health-assessment-queue';
+            queue.innerHTML = `
+                <div class="proxy-health-results-head">
+                    <h3>Fila de avaliacao</h3>
+                    <span>Ordenado por severidade e score</span>
+                </div>
+            `;
+
+            const list = document.createElement('div');
+            list.className = 'proxy-health-object-list';
             proxies.forEach((proxy) => {
-                const card = document.createElement('article');
-                card.className = `proxy-health-card is-${proxy.state.toLocaleLowerCase()}`;
-
-                const score = document.createElement('div');
-                score.className = 'proxy-health-score-ring';
-                score.style.setProperty('--score', proxy.score);
-                score.innerHTML = `<strong>${proxy.score}</strong><span>${proxy.state}</span>`;
-
-                const title = document.createElement('h3');
-                title.textContent = proxy.host;
-
-                const meta = document.createElement('div');
-                meta.className = 'proxy-health-card-meta';
-                meta.textContent = `${objectType(proxy)} · Versao ${proxy.version || '—'} · VPS ${fmt(proxy.vps_current, 0)} · Mem ${fmt(proxy.memory_total_gb, 1, ' GB')}`;
-
-                const bars = document.createElement('div');
-                bars.className = 'proxy-health-bars';
-                [
-                    ['CPU', proxy.cpu_current],
-                    ['Memoria', proxy.memory_current],
-                    ['Disco', proxy.disk_current ?? proxy.disk_avg]
-                ].forEach(([label, value]) => bars.append(this.bar(label, value)));
-
-                const summary = this.summaryCards(proxy.summary);
-
-                const toggle = document.createElement('button');
-                toggle.type = 'button';
-                toggle.className = 'proxy-health-expand';
-                toggle.dataset.proxyExpand = proxy.host;
-                toggle.setAttribute('aria-expanded', this.expanded.has(proxy.host) ? 'true' : 'false');
-                toggle.textContent = this.expanded.has(proxy.host) ? 'Ocultar leituras' : 'Expandir leituras';
-
-                card.append(score, title, meta, bars, summary, toggle);
-
-                if (this.expanded.has(proxy.host)) {
-                    card.append(this.details(proxy.host));
-                }
-
-                this.cards.append(card);
+                list.append(this.objectRow(proxy, proxy.host === selectedProxy.host));
             });
+            queue.append(list);
+
+            layout.append(queue, this.diagnosticPanel(selectedProxy));
+            this.cards.append(layout);
+        }
+
+        objectRow(proxy, selected) {
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = `proxy-health-card is-${proxy.state.toLocaleLowerCase()}${selected ? ' is-selected' : ''}`;
+            row.dataset.proxySelect = proxy.host;
+            row.setAttribute('aria-pressed', selected ? 'true' : 'false');
+
+            const score = document.createElement('div');
+            score.className = 'proxy-health-score-ring';
+            score.style.setProperty('--score', proxy.score);
+            score.innerHTML = `<strong>${proxy.score}</strong><span>${proxy.state}</span>`;
+
+            const identity = document.createElement('div');
+            identity.className = 'proxy-health-card-identity';
+            const title = document.createElement('h3');
+            title.textContent = proxy.host;
+
+            const meta = document.createElement('div');
+            meta.className = 'proxy-health-card-meta';
+            meta.textContent = `${objectType(proxy)} · Versao ${proxy.version || '—'} · VPS P95 ${fmt(proxy.vps_p95, 0)} · Mem ${fmt(proxy.memory_total_gb, 1, ' GB')}`;
+            identity.append(title, meta);
+
+            const chips = this.summaryChips(proxy.summary);
+            const context = document.createElement('div');
+            context.className = 'proxy-health-card-hover-context';
+            const contextText = splitSummary(proxy.summary)
+                .slice(0, 2)
+                .map((summary) => {
+                    const parts = this.summaryParts(summary);
+                    return `${parts.title}: ${parts.detail}`;
+                })
+                .join(' · ');
+            context.textContent = contextText || 'Proxy dentro dos parametros configurados para o assessment.';
+
+            row.append(score, identity, chips, context);
+            return row;
+        }
+
+        diagnosticPanel(proxy) {
+            const panel = document.createElement('aside');
+            panel.className = `proxy-health-results-panel proxy-health-diagnostic is-${proxy.state.toLocaleLowerCase()}`;
+
+            const head = document.createElement('div');
+            head.className = 'proxy-health-results-head';
+            const heading = document.createElement('h3');
+            heading.textContent = 'Overview';
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'proxy-health-expand';
+            toggle.dataset.proxyExpand = proxy.host;
+            toggle.setAttribute('aria-expanded', this.expanded.has(proxy.host) ? 'true' : 'false');
+            toggle.textContent = this.expanded.has(proxy.host) ? 'Ocultar leituras' : 'Expandir leituras';
+            head.append(heading, toggle);
+
+            const focus = document.createElement('div');
+            focus.className = 'proxy-health-diagnostic-focus';
+            const score = document.createElement('div');
+            score.className = 'proxy-health-score-ring';
+            score.style.setProperty('--score', proxy.score);
+            score.innerHTML = `<strong>${proxy.score}</strong><span>${proxy.state}</span>`;
+
+            const identity = document.createElement('div');
+            const title = document.createElement('h3');
+            title.textContent = proxy.host;
+            const meta = document.createElement('div');
+            meta.className = 'proxy-health-card-meta';
+            meta.textContent = `${objectType(proxy)} · Versao ${proxy.version || '—'} · VPS P95 ${fmt(proxy.vps_p95, 0)} · Mem ${fmt(proxy.memory_total_gb, 1, ' GB')}`;
+            identity.append(title, meta);
+            focus.append(score, identity);
+
+            const metrics = document.createElement('div');
+            metrics.className = 'proxy-health-key-metrics';
+            [
+                ['CPU P95', fmt(proxy.cpu_p95, 1, '%')],
+                ['Mem P95', fmt(proxy.memory_p95, 1, '%')],
+                ['Mem media', fmt(proxy.memory_avg, 1, '%')],
+                ['Disco P95', fmt(proxy.disk_p95, 1, '%')],
+                ['Unsupported', pct(proxy.unsupported_pct)],
+                ['Fila 10m P95', fmt(proxy.queue_10m_p95, 0)]
+            ].forEach(([label, value]) => {
+                const metric = document.createElement('div');
+                metric.className = 'proxy-health-key-metric';
+                metric.innerHTML = '<span></span><strong></strong>';
+                metric.children[0].textContent = label;
+                metric.children[1].textContent = value;
+                metrics.append(metric);
+            });
+
+            const summaryTitle = document.createElement('div');
+            summaryTitle.className = 'proxy-health-section-label';
+            summaryTitle.textContent = 'Pontos de Atencao';
+
+            panel.append(head, focus, metrics, summaryTitle, this.summaryCards(proxy.summary));
+
+            if (this.expanded.has(proxy.host)) {
+                panel.append(this.details(proxy.host));
+            }
+
+            return panel;
+        }
+
+        summaryChips(summaryText) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'proxy-health-summary-chips';
+            const summaries = splitSummary(summaryText).slice(0, 5);
+            if (summaries.length === 0) {
+                const chip = document.createElement('span');
+                chip.className = 'proxy-health-summary-chip';
+                chip.textContent = 'Sem achados';
+                wrapper.append(chip);
+                return wrapper;
+            }
+
+            summaries.forEach((summary) => {
+                const chip = document.createElement('span');
+                chip.className = 'proxy-health-summary-chip';
+                chip.textContent = this.summaryParts(summary).title;
+                wrapper.append(chip);
+            });
+            return wrapper;
         }
 
         details(host) {
@@ -540,7 +697,7 @@
                 .filter((row) => row.status !== 'Sem parametro configuravel')
                 .map((row) => [
                     row.process,
-                    fmt(row.current, 1, '%'),
+                    fmt(row.p95, 1, '%'),
                     fmt(row.avg30d, 1, '%'),
                     row.config_param || '—',
                     row.config_value ?? '—',
@@ -552,7 +709,7 @@
                 .filter((row) => row.status === 'Sem parametro configuravel')
                 .map((row) => [
                     row.process,
-                    fmt(row.current, 1, '%'),
+                    fmt(row.p95, 1, '%'),
                     fmt(row.avg30d, 1, '%'),
                     row.status
                 ]);
@@ -560,30 +717,67 @@
                 .filter((row) => row.host === host && !usedConfigKeys.has(row.key))
                 .map((row) => [row.key || row.name, row.value ?? '—']);
 
-            wrapper.append(
-                this.detailTable('Pollers e processos com configuracao equivalente',
-                    ['Parametro', 'Leitura atual', 'Media trends', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+            const sections = [
+                {
+                    id: 'process_config',
+                    label: 'Processos x config',
+                    table: this.detailTable('Pollers e processos com configuracao equivalente',
+                    ['Parametro', 'P95', 'Media trends', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     configurableProcessRows
-                ),
-                this.detailTable('Demais processos internos',
-                    ['Parametro', 'Leitura atual', 'Media trends', 'Status'],
+                    )
+                },
+                {
+                    id: 'internal_processes',
+                    label: 'Processos internos',
+                    table: this.detailTable('Demais processos internos',
+                    ['Parametro', 'P95', 'Media trends', 'Status'],
                     nonConfigurableProcessRows
-                ),
-                this.detailTable('Caches versus configuracao',
-                    ['Cache', 'Uso atual', 'Media trends', 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+                    )
+                },
+                {
+                    id: 'caches',
+                    label: 'Caches',
+                    table: this.detailTable('Caches versus configuracao',
+                    ['Cache', 'Uso P95', 'Media trends', 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     cacheConfig
                         .map((row) => [
-                            row.cache, fmt(row.current, 1, '%'), fmt(row.avg30d, 1, '%'),
+                            row.cache, fmt(row.p95, 1, '%'), fmt(row.avg30d, 1, '%'),
                             row.config_param || '—', row.config_value ?? '—',
                             humanBytes(row.recommended_bytes),
                             row.status, cacheAction(row)
                         ])
-                ),
-                this.detailTable('Outras configuracoes coletadas',
+                    )
+                },
+                {
+                    id: 'other_config',
+                    label: 'Outras configs',
+                    table: this.detailTable('Outras configuracoes coletadas',
                     ['Parametro', 'Configurado'],
                     otherConfigRows
-                )
-            );
+                    )
+                }
+            ];
+
+            const active = sections.some((section) => section.id === this.detailTabs[host])
+                ? this.detailTabs[host]
+                : sections[0].id;
+            const tabs = document.createElement('div');
+            tabs.className = 'proxy-health-detail-tabs';
+            sections.forEach((section) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'proxy-health-detail-tab';
+                button.dataset.proxyHost = host;
+                button.dataset.proxyDetailTab = section.id;
+                button.setAttribute('aria-pressed', section.id === active ? 'true' : 'false');
+                button.textContent = section.label;
+                tabs.append(button);
+            });
+            wrapper.append(tabs);
+            sections.forEach((section) => {
+                section.table.classList.toggle('is-active', section.id === active);
+                wrapper.append(section.table);
+            });
 
             return wrapper;
         }
@@ -650,13 +844,13 @@
                 proxy.state,
                 proxy.score,
                 proxy.version || '—',
-                fmt(proxy.vps_current, 0),
+                fmt(proxy.vps_p95, 0),
                 pct(proxy.unsupported_pct),
-                fmt(proxy.cpu_current, 1, '%'),
+                fmt(proxy.cpu_p95, 1, '%'),
                 fmt(proxy.memory_total_gb, 1, ' GB'),
-                fmt(proxy.memory_current, 1, '%'),
+                fmt(proxy.memory_p95, 1, '%'),
                 fmt(proxy.memory_avg, 1, '%'),
-                fmt(proxy.disk_current, 1, '%'),
+                fmt(proxy.disk_p95, 1, '%'),
                 proxy.summary
             ]);
         }
@@ -690,7 +884,7 @@
 
             const rows = this.exportRows();
             const headers = [
-                'secao', 'proxy', 'tipo', 'parametro', 'leitura_atual', 'media_trends',
+                'secao', 'proxy', 'tipo', 'parametro', 'leitura_p95', 'media_trends',
                 'item_configuracao', 'configurado', 'recomendado', 'status',
                 'acao_sugerida', 'valor', 'resumo'
             ];
@@ -737,13 +931,13 @@
                     ['State', proxy.state],
                     ['Score', proxy.score],
                     ['Versao', proxy.version || '—'],
-                    ['VPS atual', fmt(proxy.vps_current, 0)],
+                    ['VPS P95', fmt(proxy.vps_p95, 0)],
                     ['Unsupported %', pct(proxy.unsupported_pct)],
-                    ['CPU atual', fmt(proxy.cpu_current, 1, '%')],
+                    ['CPU P95', fmt(proxy.cpu_p95, 1, '%')],
                     ['Memoria total', fmt(proxy.memory_total_gb, 1, ' GB')],
-                    ['Memoria atual', fmt(proxy.memory_current, 1, '%')],
+                    ['Memoria P95', fmt(proxy.memory_p95, 1, '%')],
                     ['Memoria media trends', fmt(proxy.memory_avg, 1, '%')],
-                    ['Disco atual', fmt(proxy.disk_current, 1, '%')]
+                    ['Disco P95', fmt(proxy.disk_p95, 1, '%')]
                 ].forEach(([parameter, value]) => add({
                     secao: 'Overview',
                     proxy: proxy.host,
@@ -770,7 +964,7 @@
                     secao: configurable ? 'Processos configuraveis' : 'Processos internos',
                     proxy: row.host,
                     parametro: row.process,
-                    leitura_atual: fmt(row.current, 1, '%'),
+                    leitura_p95: fmt(row.p95, 1, '%'),
                     media_trends: fmt(row.avg30d, 1, '%'),
                     item_configuracao: configurable ? (row.config_param || '—') : '',
                     configurado: configurable ? (row.config_value ?? '—') : '',
@@ -784,7 +978,7 @@
                 secao: 'Caches',
                 proxy: row.host,
                 parametro: row.cache,
-                leitura_atual: fmt(row.current, 1, '%'),
+                leitura_p95: fmt(row.p95, 1, '%'),
                 media_trends: fmt(row.avg30d, 1, '%'),
                 item_configuracao: row.config_param || '—',
                 configurado: row.config_value ?? '—',
@@ -906,9 +1100,9 @@
                 {
                     name: 'Overview',
                     headers: [
-                        'Proxy', 'Tipo', 'State', 'Score', 'Versao', 'VPS atual', 'Unsupported %',
-                        'CPU atual', 'Mem total GB', 'Mem atual', 'Mem media trends',
-                        'Disco atual', 'Resumo'
+                        'Proxy', 'Tipo', 'State', 'Score', 'Versao', 'VPS P95', 'Unsupported %',
+                        'CPU P95', 'Mem total GB', 'Mem P95', 'Mem media trends',
+                        'Disco P95', 'Resumo'
                     ],
                     rows: this.data.proxies.map((proxy) => [
                         proxy.host,
@@ -916,20 +1110,20 @@
                         proxy.state,
                         proxy.score,
                         proxy.version || '—',
-                        fmt(proxy.vps_current, 0),
+                        fmt(proxy.vps_p95, 0),
                         pct(proxy.unsupported_pct),
-                        fmt(proxy.cpu_current, 1, '%'),
+                        fmt(proxy.cpu_p95, 1, '%'),
                         fmt(proxy.memory_total_gb, 1, ' GB'),
-                        fmt(proxy.memory_current, 1, '%'),
+                        fmt(proxy.memory_p95, 1, '%'),
                         fmt(proxy.memory_avg, 1, '%'),
-                        fmt(proxy.disk_current, 1, '%'),
+                        fmt(proxy.disk_p95, 1, '%'),
                         proxy.summary
                     ])
                 },
                 {
                     name: 'Processos Config',
                     headers: [
-                        'Proxy', 'Parametro', 'Leitura atual', 'Media trends',
+                        'Proxy', 'Parametro', 'P95', 'Media trends',
                         'Item de configuracao', 'Configurado', 'Recomendado',
                         'Status', 'Acao sugerida'
                     ],
@@ -938,7 +1132,7 @@
                         .map((row) => [
                             row.host,
                             row.process,
-                            fmt(row.current, 1, '%'),
+                            fmt(row.p95, 1, '%'),
                             fmt(row.avg30d, 1, '%'),
                             row.config_param || '—',
                             row.config_value ?? '—',
@@ -949,13 +1143,13 @@
                 },
                 {
                     name: 'Processos Internos',
-                    headers: ['Proxy', 'Parametro', 'Leitura atual', 'Media trends', 'Status'],
+                    headers: ['Proxy', 'Parametro', 'P95', 'Media trends', 'Status'],
                     rows: this.data.process_config
                         .filter((row) => row.status === 'Sem parametro configuravel')
                         .map((row) => [
                             row.host,
                             row.process,
-                            fmt(row.current, 1, '%'),
+                            fmt(row.p95, 1, '%'),
                             fmt(row.avg30d, 1, '%'),
                             row.status
                         ])
@@ -963,13 +1157,13 @@
                 {
                     name: 'Caches',
                     headers: [
-                        'Proxy', 'Cache', 'Uso atual', 'Media trends', 'Parametro',
+                        'Proxy', 'Cache', 'Uso P95', 'Media trends', 'Parametro',
                         'Configurado', 'Recomendado', 'Status', 'Acao sugerida'
                     ],
                     rows: this.data.cache_config.map((row) => [
                         row.host,
                         row.cache,
-                        fmt(row.current, 1, '%'),
+                        fmt(row.p95, 1, '%'),
                         fmt(row.avg30d, 1, '%'),
                         row.config_param || '—',
                         row.config_value ?? '—',
