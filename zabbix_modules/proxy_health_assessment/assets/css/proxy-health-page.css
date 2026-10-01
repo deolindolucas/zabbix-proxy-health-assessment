@@ -19,14 +19,6 @@ html[color-scheme="dark"] .proxy-health {
     color-scheme: dark;
 }
 
-.proxy-health-toolbar {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
 .proxy-health-tabs {
     display: flex;
     gap: 6px;
@@ -34,7 +26,6 @@ html[color-scheme="dark"] .proxy-health {
 }
 
 .proxy-health-tab,
-.proxy-health-search-clear,
 .proxy-health-export-main,
 .proxy-health-export-toggle,
 .proxy-health-export-option {
@@ -162,18 +153,6 @@ html[color-scheme="dark"] .proxy-health {
     background: linear-gradient(90deg, #d65d4a, #ff947f);
 }
 
-.proxy-health-topbar,
-.proxy-health-kpis,
-.proxy-health-cards {
-    display: grid;
-    gap: 10px;
-}
-
-.proxy-health-topbar {
-    grid-template-columns: minmax(260px, 1fr) minmax(260px, 420px);
-    align-items: end;
-}
-
 .proxy-health-heading {
     min-width: 0;
 }
@@ -197,313 +176,10 @@ html[color-scheme="dark"] .proxy-health {
     align-items: end;
 }
 
-.proxy-health-search-label {
-    grid-column: 1 / -1;
-    font-weight: 700;
-}
-
-.proxy-health-search input[type="search"] {
-    min-height: 32px;
-}
-
-.proxy-health-kpis {
-    grid-template-columns: repeat(5, minmax(130px, 1fr));
-}
-
-.proxy-health-kpi,
-.proxy-health-card,
-.proxy-health-panel,
 .proxy-health-error {
     border: 1px solid var(--ph-border);
     border-radius: 6px;
     background: var(--ph-panel);
-}
-
-.proxy-health-kpi {
-    padding: 12px;
-    border-left: 4px solid var(--ph-accent);
-    cursor: pointer;
-    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background-color .16s ease;
-    --ph-kpi-color: var(--ph-accent);
-}
-
-.proxy-health-kpi.is-ok {
-    border-left-color: var(--ph-good);
-    --ph-kpi-color: var(--ph-good);
-}
-
-.proxy-health-kpi.is-attention {
-    border-left-color: var(--ph-warn);
-    --ph-kpi-color: var(--ph-warn);
-}
-
-.proxy-health-kpi.is-risk {
-    border-left-color: var(--ph-risk);
-    --ph-kpi-color: var(--ph-risk);
-}
-
-.proxy-health-kpi.is-excluded {
-    border-left-color: #7f8a96;
-    --ph-kpi-color: #7f8a96;
-}
-
-.proxy-health-kpi:hover,
-.proxy-health-kpi:focus-visible {
-    transform: translateY(-1px);
-    border-color: var(--ph-kpi-color);
-    box-shadow: 0 0 0 1px rgba(2, 123, 199, .28);
-    outline: none;
-}
-
-.proxy-health-kpi.is-selected {
-    transform: translateY(-2px) scale(1.015);
-    border-color: var(--ph-kpi-color);
-    background: rgba(2, 123, 199, .16);
-    box-shadow:
-        0 0 0 1px rgba(2, 123, 199, .48),
-        0 0 18px rgba(2, 123, 199, .34);
-}
-
-.proxy-health-kpi.is-ok:hover,
-.proxy-health-kpi.is-ok:focus-visible {
-    box-shadow: 0 0 0 1px rgba(38, 150, 111, .28);
-}
-
-.proxy-health-kpi.is-ok.is-selected {
-    background: rgba(38, 150, 111, .16);
-    box-shadow:
-        0 0 0 1px rgba(38, 150, 111, .48),
-        0 0 18px rgba(38, 150, 111, .34);
-}
-
-.proxy-health-kpi.is-attention:hover,
-.proxy-health-kpi.is-attention:focus-visible {
-    box-shadow: 0 0 0 1px rgba(211, 155, 32, .28);
-}
-
-.proxy-health-kpi.is-attention.is-selected {
-    background: rgba(211, 155, 32, .16);
-    box-shadow:
-        0 0 0 1px rgba(211, 155, 32, .5),
-        0 0 18px rgba(211, 155, 32, .36);
-}
-
-.proxy-health-kpi.is-risk:hover,
-.proxy-health-kpi.is-risk:focus-visible {
-    box-shadow: 0 0 0 1px rgba(214, 93, 74, .28);
-}
-
-.proxy-health-kpi.is-risk.is-selected {
-    background: rgba(214, 93, 74, .16);
-    box-shadow:
-        0 0 0 1px rgba(214, 93, 74, .5),
-        0 0 18px rgba(214, 93, 74, .36);
-}
-
-.proxy-health-kpi.is-excluded:hover,
-.proxy-health-kpi.is-excluded:focus-visible {
-    box-shadow: 0 0 0 1px rgba(127, 138, 150, .3);
-}
-
-.proxy-health-kpi.is-excluded.is-selected {
-    background: rgba(127, 138, 150, .16);
-    box-shadow:
-        0 0 0 1px rgba(127, 138, 150, .5),
-        0 0 18px rgba(127, 138, 150, .32);
-}
-
-.proxy-health-kpi-value {
-    font-size: 26px;
-    font-weight: 800;
-}
-
-.proxy-health-kpi-label {
-    opacity: .72;
-    font-size: 12px;
-}
-
-.proxy-health-cards {
-    grid-template-columns: minmax(0, 1fr);
-}
-
-.proxy-health-results-layout {
-    display: grid;
-    grid-template-columns: minmax(320px, .52fr) minmax(560px, 1fr);
-    gap: 12px;
-    align-items: start;
-}
-
-.proxy-health-results-panel {
-    min-width: 0;
-    border: 1px solid var(--ph-border);
-    border-radius: 6px;
-    background: var(--ph-panel);
-    overflow: hidden;
-}
-
-.proxy-health-results-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: center;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--ph-border);
-}
-
-.proxy-health-results-head h3 {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: .11em;
-    text-transform: uppercase;
-    opacity: .72;
-}
-
-.proxy-health-results-head span {
-    font-size: 12px;
-    opacity: .65;
-}
-
-.proxy-health-results-head .proxy-health-expand {
-    margin-top: 0;
-}
-
-.proxy-health-object-list {
-    display: grid;
-    gap: 1px;
-    background: var(--ph-border);
-}
-
-.proxy-health-excluded-panel {
-    display: none;
-    padding: 12px;
-    border: 1px solid var(--ph-border);
-    border-left: 4px solid #7f8a96;
-    border-radius: 6px;
-    background: var(--ph-panel);
-}
-
-.proxy-health-excluded-panel.is-open {
-    display: grid;
-    gap: 10px;
-}
-
-.proxy-health-excluded-panel h3 {
-    margin: 0;
-    font-size: 14px;
-}
-
-.proxy-health-card {
-    display: grid;
-    grid-template-columns: 88px minmax(0, 1fr);
-    gap: 12px;
-    align-items: center;
-    width: 100%;
-    min-height: 104px;
-    padding: 12px;
-    border: 0;
-    border-left: 4px solid var(--ph-good);
-    border-radius: 0;
-    background: var(--ph-panel);
-    color: currentColor;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-    overflow: hidden;
-}
-
-.proxy-health-card.is-atencao {
-    border-left-color: var(--ph-warn);
-}
-
-.proxy-health-card.is-risco,
-.proxy-health-card.is-critico {
-    border-left-color: var(--ph-risk);
-}
-
-.proxy-health-card:hover,
-.proxy-health-card:focus-visible,
-.proxy-health-card.is-selected {
-    outline: none;
-    background: rgba(128, 144, 160, .08);
-}
-
-.proxy-health-card:hover,
-.proxy-health-card:focus-visible {
-    box-shadow: inset 0 0 0 1px var(--ph-border);
-    z-index: 1;
-}
-
-.proxy-health-card h3,
-.proxy-health-diagnostic-focus h3 {
-    margin: 0 0 4px;
-    font-size: 16px;
-    line-height: 1.2;
-    overflow-wrap: anywhere;
-}
-
-.proxy-health-card-identity {
-    align-self: end;
-    min-width: 0;
-}
-
-.proxy-health-expand {
-    min-height: 30px;
-    margin-top: 12px;
-    padding: 5px 11px;
-    border: 1px solid var(--ph-border);
-    border-radius: 4px;
-    background: var(--ph-chip);
-    color: currentColor;
-    font: inherit;
-    cursor: pointer;
-}
-
-.proxy-health-expand:hover,
-.proxy-health-expand:focus-visible {
-    border-color: var(--ph-accent);
-    outline: none;
-}
-
-.proxy-health-summary-cards {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    align-items: stretch;
-}
-
-.proxy-health-summary-card {
-    display: grid;
-    gap: 3px;
-    flex: 1 1 190px;
-    max-width: 340px;
-    min-width: 170px;
-    padding: 8px 9px;
-    border: 1px solid var(--ph-border);
-    border-left: 3px solid var(--ph-accent);
-    border-radius: 4px;
-    background: rgba(128, 144, 160, .08);
-}
-
-.proxy-health-card.is-atencao .proxy-health-summary-card {
-    border-left-color: var(--ph-warn);
-}
-
-.proxy-health-card.is-risco .proxy-health-summary-card,
-.proxy-health-card.is-critico .proxy-health-summary-card {
-    border-left-color: var(--ph-risk);
-}
-
-.proxy-health-summary-card strong {
-    font-size: 12px;
-    line-height: 1.2;
-}
-
-.proxy-health-summary-card span {
-    font-size: 12px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-    opacity: .86;
 }
 
 .proxy-health-card-details {
@@ -578,252 +254,8 @@ html[color-scheme="dark"] .proxy-health {
     overflow-wrap: anywhere;
 }
 
-.proxy-health-card-meta {
-    font-size: 12px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-    opacity: .72;
-}
-
-.proxy-health-score-ring {
-    --ph-ring: var(--ph-good);
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: 82px;
-    height: 82px;
-    border-radius: 50%;
-}
-
 /* Anel desenhado num pseudo-elemento com mascara: o centro fica transparente e mostra o
    fundo do proprio card, entao o texto segue a cor do tema (claro ou escuro). */
-.proxy-health-score-ring::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: conic-gradient(var(--ph-ring) calc(var(--score) * 1%), rgba(128, 144, 160, .18) 0);
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
-}
-
-.proxy-health-score-ring > * {
-    position: relative;
-}
-
-.proxy-health-card.is-atencao .proxy-health-score-ring,
-.proxy-health-diagnostic.is-atencao .proxy-health-score-ring {
-    --ph-ring: var(--ph-warn);
-}
-
-.proxy-health-card.is-risco .proxy-health-score-ring,
-.proxy-health-card.is-critico .proxy-health-score-ring,
-.proxy-health-diagnostic.is-risco .proxy-health-score-ring,
-.proxy-health-diagnostic.is-critico .proxy-health-score-ring {
-    --ph-ring: var(--ph-risk);
-}
-
-.proxy-health-score-ring strong {
-    font-size: 22px;
-    line-height: 1;
-}
-
-.proxy-health-score-ring span {
-    margin-top: -18px;
-    font-size: 10px;
-    opacity: .72;
-}
-
-.proxy-health-diagnostic {
-    display: grid;
-    gap: 0;
-}
-
-.proxy-health-diagnostic-focus {
-    display: grid;
-    grid-template-columns: 88px minmax(0, 1fr);
-    gap: 12px;
-    align-items: center;
-    padding: 12px;
-}
-
-
-
-.proxy-health-key-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    padding: 0 12px 12px;
-}
-
-.proxy-health-key-metric {
-    min-width: 0;
-    padding: 9px;
-    border: 1px solid var(--ph-border);
-    border-radius: 4px;
-    background: rgba(128, 144, 160, .08);
-}
-
-.proxy-health-key-metric span {
-    display: block;
-    font-size: 12px;
-    opacity: .7;
-}
-
-.proxy-health-key-metric strong {
-    display: block;
-    margin-top: 5px;
-    font-size: 18px;
-    line-height: 1.1;
-}
-
-.proxy-health-section-label {
-    padding: 0 12px 7px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: .11em;
-    text-transform: uppercase;
-    opacity: .72;
-}
-
-.proxy-health-diagnostic > .proxy-health-summary-cards {
-    padding: 0 12px 12px;
-}
-
-.proxy-health-summary-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-    align-self: start;
-    grid-column: 2;
-    min-width: 0;
-}
-
-.proxy-health-summary-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 23px;
-    max-width: 100%;
-    padding: 3px 7px;
-    border-left: 3px solid var(--ph-accent);
-    border-radius: 3px;
-    background: rgba(128, 144, 160, .08);
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.proxy-health-card.is-atencao .proxy-health-summary-chip {
-    border-left-color: var(--ph-warn);
-}
-
-.proxy-health-card.is-risco .proxy-health-summary-chip,
-.proxy-health-card.is-critico .proxy-health-summary-chip {
-    border-left-color: var(--ph-risk);
-}
-
-.proxy-health-card-hover-context {
-    grid-column: 2;
-    max-height: 0;
-    overflow: hidden;
-    color: currentColor;
-    font-size: 12px;
-    line-height: 1.35;
-    opacity: 0;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    transition: max-height .16s ease, opacity .16s ease;
-}
-
-.proxy-health-card:hover .proxy-health-card-hover-context,
-.proxy-health-card:focus-visible .proxy-health-card-hover-context {
-    max-height: 18px;
-    opacity: .82;
-}
-
-.proxy-health-bars {
-    display: grid;
-    gap: 6px;
-}
-
-.proxy-health-bar-row {
-    display: grid;
-    grid-template-columns: 76px minmax(80px, 1fr) 54px;
-    gap: 8px;
-    align-items: center;
-    font-size: 12px;
-}
-
-.proxy-health-bar-row div {
-    height: 7px;
-    border-radius: 999px;
-    background: rgba(128, 144, 160, .18);
-    overflow: hidden;
-}
-
-.proxy-health-bar-row i {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: var(--ph-accent);
-}
-
-.proxy-health-panel {
-    min-width: 0;
-    padding: 12px;
-    overflow: auto;
-}
-
-.proxy-health-consolidated-panel {
-    padding: 0;
-    border: 1px solid var(--ph-border);
-    border-radius: 6px;
-    background: var(--ph-panel);
-    overflow: hidden;
-}
-
-.proxy-health-consolidated-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: center;
-    padding: 10px 12px;
-}
-
-.proxy-health-consolidated-head .proxy-health-title {
-    margin: 0;
-}
-
-.proxy-health-consolidated-toggle {
-    min-height: 30px;
-    padding: 5px 11px;
-    border: 1px solid var(--ph-border);
-    border-radius: 4px;
-    background: var(--ph-chip);
-    color: currentColor;
-    font: inherit;
-    cursor: pointer;
-}
-
-.proxy-health-consolidated-toggle:hover,
-.proxy-health-consolidated-toggle:focus-visible {
-    border-color: var(--ph-accent);
-    outline: none;
-}
-
-.proxy-health-consolidated-body {
-    display: none;
-    max-height: 340px;
-    padding: 0 12px 12px;
-    overflow: auto;
-    border-top: 1px solid var(--ph-border);
-}
-
-.proxy-health-consolidated-panel.is-open .proxy-health-consolidated-body {
-    display: block;
-}
 
 .proxy-health-table {
     width: 100%;
@@ -1007,18 +439,9 @@ html[color-scheme="dark"] .proxy-health {
 }
 
 @media (max-width: 900px) {
-    .proxy-health-toolbar {
-        align-items: stretch;
-        flex-direction: column;
-    }
 
     .proxy-health-export {
         align-self: flex-start;
-    }
-
-    .proxy-health-topbar,
-    .proxy-health-kpis {
-        grid-template-columns: 1fr;
     }
 
     .proxy-health-search {
@@ -1037,32 +460,532 @@ html[color-scheme="dark"] .proxy-health {
         justify-self: start;
         text-align: left;
     }
-
-    .proxy-health-results-layout {
-        grid-template-columns: 1fr;
-    }
-
-    .proxy-health-card {
-        grid-template-columns: 76px minmax(0, 1fr);
-    }
-
-    .proxy-health-bars,
-    .proxy-health-summary-chips,
-    .proxy-health-card-hover-context {
-        grid-column: 2;
-    }
 }
 
-@media (max-width: 620px) {
-    .proxy-health-card,
-    .proxy-health-diagnostic-focus,
-    .proxy-health-key-metrics {
+/* ---- Cabecalho em uma linha ---- */
+.proxy-health-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+}
+
+.proxy-health-header-title {
+    display: grid;
+    gap: 2px;
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
+.proxy-health-header .proxy-health-title {
+    margin: 0;
+    font-size: 18px;
+}
+
+.proxy-health-search input[type="search"] {
+    width: 220px;
+    min-height: 30px;
+}
+
+/* ---- Faixa de distribuicao (substitui os 5 KPIs) ---- */
+.proxy-health-distribution {
+    display: grid;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid var(--ph-border);
+    border-radius: 6px;
+    background: var(--ph-panel);
+}
+
+.proxy-health-distribution-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+}
+
+.proxy-health-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: currentColor;
+    cursor: pointer;
+}
+
+.proxy-health-legend-item:hover,
+.proxy-health-legend-item.is-selected {
+    border-color: var(--ph-border);
+    background: var(--ph-chip);
+}
+
+.proxy-health-legend-item[data-proxy-kpi-filter="total"] {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.proxy-health-legend-item b {
+    font-variant-numeric: tabular-nums;
+}
+
+.proxy-health-distribution-summary {
+    margin-left: auto;
+    font-size: 12px;
+    opacity: .75;
+}
+
+.proxy-health-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.proxy-health-swatch.is-ok,
+.proxy-health-distribution-bar .is-ok {
+    background: var(--ph-good);
+}
+
+.proxy-health-swatch.is-attention,
+.proxy-health-distribution-bar .is-attention {
+    background: var(--ph-warn);
+}
+
+.proxy-health-swatch.is-risk,
+.proxy-health-distribution-bar .is-risk {
+    background: var(--ph-risk);
+}
+
+.proxy-health-swatch.is-excluded {
+    background: rgba(128, 144, 160, .55);
+}
+
+.proxy-health-distribution-bar {
+    display: flex;
+    gap: 2px;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(128, 144, 160, .16);
+}
+
+.proxy-health-distribution-bar .is-excluded {
+    background: repeating-linear-gradient(135deg, rgba(128, 144, 160, .45) 0 4px, rgba(128, 144, 160, .2) 4px 8px);
+}
+
+/* ---- Tabela densa ---- */
+.proxy-health-cards {
+    display: grid;
+    gap: 12px;
+}
+
+.proxy-health-grid-wrap {
+    border: 1px solid var(--ph-border);
+    border-radius: 6px;
+    background: var(--ph-panel);
+    overflow-x: auto;
+}
+
+.proxy-health-grid {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.proxy-health-grid th {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--ph-border);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-align: right;
+    text-transform: uppercase;
+    white-space: nowrap;
+    opacity: .75;
+}
+
+.proxy-health-grid td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--ph-border);
+    text-align: right;
+    vertical-align: middle;
+}
+
+.proxy-health-grid .is-left {
+    text-align: left;
+}
+
+.proxy-health-row {
+    cursor: pointer;
+}
+
+.proxy-health-row > td:first-child {
+    border-left: 3px solid transparent;
+}
+
+.proxy-health-row.is-attention > td:first-child {
+    border-left-color: var(--ph-warn);
+}
+
+.proxy-health-row.is-risk > td:first-child,
+.proxy-health-row.is-critical > td:first-child {
+    border-left-color: var(--ph-risk);
+}
+
+.proxy-health-row:hover > td,
+.proxy-health-row.is-open > td,
+.proxy-health-detail-row > td {
+    background: var(--ph-chip);
+}
+
+.proxy-health-row.is-open > td {
+    border-bottom-color: transparent;
+}
+
+.proxy-health-row-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: currentColor;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.proxy-health-row-toggle svg {
+    opacity: .7;
+    transition: transform .15s ease;
+}
+
+.proxy-health-row-toggle[aria-expanded="true"] svg {
+    transform: rotate(90deg);
+}
+
+.proxy-health-object-meta {
+    margin: 2px 0 0 20px;
+    font-size: 12px;
+    opacity: .75;
+}
+
+.proxy-health-num,
+.proxy-health-score strong {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.proxy-health-score {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.proxy-health-score strong {
+    min-width: 38px;
+    font-size: 18px;
+}
+
+.proxy-health-score > div {
+    display: grid;
+    gap: 4px;
+    width: 64px;
+}
+
+.proxy-health-state {
+    font-size: 12px;
+}
+
+.proxy-health-row.is-ok .proxy-health-state {
+    color: var(--ph-good);
+}
+
+.proxy-health-row.is-attention .proxy-health-state {
+    color: var(--ph-warn);
+}
+
+.proxy-health-row.is-risk .proxy-health-state,
+.proxy-health-row.is-critical .proxy-health-state {
+    color: var(--ph-risk);
+}
+
+.proxy-health-meter {
+    position: relative;
+    height: 4px;
+    min-width: 56px;
+    margin-top: 5px;
+    border-radius: 2px;
+    background: rgba(128, 144, 160, .25);
+}
+
+.proxy-health-score .proxy-health-meter {
+    margin-top: 0;
+}
+
+.proxy-health-meter i {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    border-radius: 2px;
+    background: var(--ph-good);
+}
+
+.proxy-health-meter.is-attention i,
+.proxy-health-row.is-attention .proxy-health-score i {
+    background: var(--ph-warn);
+}
+
+.proxy-health-meter.is-risk i,
+.proxy-health-row.is-risk .proxy-health-score i,
+.proxy-health-row.is-critical .proxy-health-score i {
+    background: var(--ph-risk);
+}
+
+.proxy-health-meter b {
+    position: absolute;
+    top: -3px;
+    width: 1px;
+    height: 10px;
+    background: currentColor;
+    opacity: .6;
+}
+
+.proxy-health-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.proxy-health-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 260px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--ph-chip);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.proxy-health-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.proxy-health-chip.is-attention {
+    background: rgba(211, 155, 32, .16);
+}
+
+.proxy-health-chip.is-risk,
+.proxy-health-chip.is-critical {
+    background: rgba(214, 93, 74, .16);
+}
+
+/* ---- Detalhe aberto na linha ---- */
+.proxy-health-detail-row > td {
+    padding: 4px 16px 16px 35px;
+    text-align: left;
+}
+
+.proxy-health-detail-row.is-attention > td:first-child {
+    border-left: 3px solid var(--ph-warn);
+}
+
+.proxy-health-detail-row.is-risk > td:first-child,
+.proxy-health-detail-row.is-critical > td:first-child {
+    border-left: 3px solid var(--ph-risk);
+}
+
+.proxy-health-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    margin-bottom: 10px;
+}
+
+/* O tema do Zabbix 8.0 estiliza <section> globalmente (fundo, borda e margem). */
+.proxy-health-detail-block {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    align-self: start;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-width: 0;
+}
+
+.proxy-health-detail-block h4 {
+    margin: 0;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    opacity: .75;
+}
+
+.proxy-health-detail-block p {
+    margin: 0;
+    font-size: 12px;
+}
+
+.proxy-health-composition {
+    display: flex;
+    height: 22px;
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 12px;
+}
+
+.proxy-health-composition > div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.proxy-health-composition .is-remaining {
+    justify-content: flex-start;
+    padding-left: 8px;
+    background: rgba(38, 150, 111, .45);
+}
+
+.proxy-health-composition .is-remaining.is-attention {
+    background: rgba(211, 155, 32, .4);
+}
+
+.proxy-health-composition .is-remaining.is-risk,
+.proxy-health-composition .is-remaining.is-critical {
+    background: rgba(214, 93, 74, .4);
+}
+
+.proxy-health-composition .is-deduction {
+    border-left: 1px solid var(--ph-border);
+    background: repeating-linear-gradient(135deg, rgba(128, 144, 160, .35) 0 5px, rgba(128, 144, 160, .15) 5px 10px);
+}
+
+.proxy-health-findings,
+.proxy-health-problems {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+}
+
+.proxy-health-findings li {
+    padding-left: 10px;
+    border-left: 2px solid var(--ph-border);
+}
+
+.proxy-health-problems li {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.proxy-health-problems li.is-muted {
+    opacity: .6;
+}
+
+.proxy-health-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(128, 144, 160, .7);
+}
+
+.proxy-health-dot.is-sev-1 { background: #7499ff; }
+.proxy-health-dot.is-sev-2 { background: #ffc859; }
+.proxy-health-dot.is-sev-3 { background: #ffa059; }
+.proxy-health-dot.is-sev-4 { background: #e97659; }
+.proxy-health-dot.is-sev-5 { background: #e45959; }
+
+.proxy-health-link,
+.proxy-health-link-button {
+    justify-self: start;
+    font-size: 12px;
+}
+
+.proxy-health-link-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ph-accent);
+    cursor: pointer;
+}
+
+.proxy-health-link-button:hover {
+    text-decoration: underline;
+}
+
+.proxy-health-detail-row .proxy-health-card-details {
+    margin-top: 10px;
+}
+
+/* ---- Fora do escopo no rodape ---- */
+.proxy-health-excluded-panel {
+    border: 1px solid var(--ph-border);
+    border-radius: 6px;
+    background: var(--ph-panel);
+}
+
+.proxy-health-excluded-panel[hidden] {
+    display: none;
+}
+
+.proxy-health-excluded-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 0;
+    background: transparent;
+    color: currentColor;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.proxy-health-excluded-head svg {
+    opacity: .7;
+    transition: transform .15s ease;
+}
+
+.proxy-health-excluded-head[aria-expanded="true"] svg {
+    transform: rotate(90deg);
+}
+
+.proxy-health-excluded-panel .proxy-health-table {
+    margin: 0 14px 12px;
+    width: calc(100% - 28px);
+}
+
+@media (max-width: 900px) {
+    .proxy-health-detail-grid {
         grid-template-columns: 1fr;
     }
 
-    .proxy-health-bars,
-    .proxy-health-summary-chips,
-    .proxy-health-card-hover-context {
-        grid-column: auto;
+    .proxy-health-distribution-summary {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .proxy-health-search input[type="search"] {
+        width: 100%;
     }
 }
