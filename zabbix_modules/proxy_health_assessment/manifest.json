@@ -4,7 +4,7 @@
     "type": "module",
     "name": "Proxy Health Assessment",
     "namespace": "ProxyHealthAssessment",
-    "version": "4.1.0",
+    "version": "4.1.1",
     "author": "Lucas Deolindo",
     "description": "Assessment interativo de saúde dos Zabbix Proxies, baseado nos templates de proxy e configuração.",
     "actions": {
