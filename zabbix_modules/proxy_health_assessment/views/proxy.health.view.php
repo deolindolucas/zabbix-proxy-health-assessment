@@ -241,7 +241,7 @@ $tabs = (new CDiv([
 ]))->addClass('proxy-health-tabs');
 
 $export = (new CDiv([
-    (new CTag('button', true, _('Exportar Relatorio')))
+    (new CTag('button', true, _('Exportar')))
         ->addClass('proxy-health-export-main')
         ->setAttribute('type', 'button')
         ->setAttribute('data-proxy-export', 'xlsx'),
@@ -265,77 +265,74 @@ $export = (new CDiv([
         ->setAttribute('data-proxy-export-menu', '1')
 ]))->addClass('proxy-health-export');
 
-$toolbar = (new CDiv([$tabs, $export]))->addClass('proxy-health-toolbar');
+$scope_label = $settings['host_groupid'] !== ''
+    ? sprintf(_('grupo %s'), $settings['host_group_name'])
+    : _('nenhum host group');
+if (($settings['zabbix_server_host_name'] ?? '') !== '') {
+    $scope_label .= ' + '.$settings['zabbix_server_host_name'];
+}
+
+$header = (new CDiv([
+    (new CDiv([
+        (new CTag('h2', true, _('Saude dos proxies')))->addClass('proxy-health-title'),
+        (new CDiv(sprintf(_('Assessment %1$s · janela de %2$s dias (P95 dos picos horarios) · escopo: %3$s'),
+            $module_version, $settings['trend_days'], $scope_label
+        )))->addClass('proxy-health-muted')
+    ]))->addClass('proxy-health-header-title'),
+    $tabs,
+    (new CDiv(
+        (new CTextBox('proxy_search', $data['proxy_search']))
+            ->setId('proxy-health-search')
+            ->setAttribute('type', 'search')
+            ->setAttribute('placeholder', _('Filtrar proxy'))
+            ->setAttribute('aria-label', _('Filtrar proxy'))
+            ->setAttribute('autocomplete', 'off')
+    ))->addClass('proxy-health-search'),
+    $export
+]))->addClass('proxy-health-header');
+
+$legend_item = static function(string $filter, string $label, string $swatch = ''): CTag {
+    $content = [];
+    if ($swatch !== '') {
+        $content[] = (new CSpan())->addClass('proxy-health-swatch '.$swatch);
+    }
+    $content[] = (new CTag('b', true, '0'))->setAttribute('data-proxy-kpi', $filter);
+    $content[] = $filter === 'total'
+        ? (new CSpan(' '.$label))->setAttribute('data-proxy-kpi-total-label', '1')
+        : ' '.$label;
+
+    return (new CTag('button', true, $content))
+        ->addClass('proxy-health-legend-item')
+        ->setAttribute('type', 'button')
+        ->setAttribute('data-proxy-kpi-filter', $filter)
+        ->setAttribute('aria-pressed', 'false');
+};
+
+$distribution = (new CDiv([
+    (new CDiv([
+        $legend_item('total', _('avaliados')),
+        $legend_item('ok', _('OK'), 'is-ok'),
+        $legend_item('attention', _('Atencao'), 'is-attention'),
+        $legend_item('risk', _('Risco / Critico'), 'is-risk'),
+        $legend_item('excluded', _('fora do escopo'), 'is-excluded'),
+        (new CSpan())
+            ->addClass('proxy-health-distribution-summary')
+            ->setAttribute('data-proxy-distribution-summary', '1')
+    ]))->addClass('proxy-health-distribution-head'),
+    (new CDiv())
+        ->addClass('proxy-health-distribution-bar')
+        ->setAttribute('data-proxy-distribution-bar', '1')
+        ->setAttribute('aria-hidden', 'true')
+]))->addClass('proxy-health-distribution');
 
 $overview = (new CDiv([
-    (new CDiv([
-        (new CDiv([
-            (new CTag('h2', true, _('Saude dos proxies')))->addClass('proxy-health-title'),
-            (new CDiv(sprintf(_('Assessment %s em tempo real, com proxies offline fora do escopo.'), $module_version)))
-                ->addClass('proxy-health-muted')
-        ]))->addClass('proxy-health-heading'),
-        (new CDiv([
-            (new CLabel(_('Pesquisar proxy'), 'proxy-health-search'))->addClass('proxy-health-search-label'),
-            (new CTextBox('proxy_search', $data['proxy_search']))
-                ->setId('proxy-health-search')
-                ->setAttribute('type', 'search')
-                ->setAttribute('placeholder', _('Nome do proxy'))
-                ->setAttribute('autocomplete', 'off'),
-            (new CTag('button', true, _('Limpar')))
-                ->addClass('proxy-health-search-clear')
-                ->setAttribute('type', 'button')
-                ->setAttribute('data-proxy-clear-search', '1')
-        ]))->addClass('proxy-health-search')
-    ]))->addClass('proxy-health-topbar'),
-
     $data['error'] !== null
         ? (new CDiv([$data['error'], (new CDiv($data['exception'] ?? ''))->addClass('proxy-health-muted')]))
             ->addClass('proxy-health-error')
         : null,
-
-    (new CDiv([
-        (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'total'), (new CDiv(_('Objetos avaliados')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi')->setAttribute('data-proxy-kpi-filter', 'total')->setAttribute('role', 'button')->setAttribute('tabindex', '0'),
-        (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'ok'), (new CDiv(_('OK')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi is-ok')->setAttribute('data-proxy-kpi-filter', 'ok')->setAttribute('role', 'button')->setAttribute('tabindex', '0'),
-        (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'attention'), (new CDiv(_('Atencao')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi is-attention')->setAttribute('data-proxy-kpi-filter', 'attention')->setAttribute('role', 'button')->setAttribute('tabindex', '0'),
-        (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'risk'), (new CDiv(_('Risco/Critico')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi is-risk')->setAttribute('data-proxy-kpi-filter', 'risk')->setAttribute('role', 'button')->setAttribute('tabindex', '0'),
-        (new CDiv([(new CDiv('0'))->addClass('proxy-health-kpi-value')->setAttribute('data-proxy-kpi', 'excluded'), (new CDiv(_('Fora do escopo')))->addClass('proxy-health-kpi-label')]))->addClass('proxy-health-kpi is-excluded')->setAttribute('data-proxy-kpi-filter', 'excluded')->setAttribute('role', 'button')->setAttribute('tabindex', '0')
-    ]))->addClass('proxy-health-kpis'),
-
-    (new CDiv())->addClass('proxy-health-excluded-panel')->setAttribute('data-proxy-excluded-panel', '1'),
-
-    (new CDiv([
-        (new CDiv([
-            (new CTag('h3', true, _('Detalhes consolidados')))->addClass('proxy-health-title'),
-            (new CTag('button', true, _('Mostrar detalhes')))
-                ->addClass('proxy-health-consolidated-toggle')
-                ->setAttribute('type', 'button')
-                ->setAttribute('aria-expanded', 'false')
-                ->setAttribute('data-proxy-consolidated-toggle', '1')
-        ]))->addClass('proxy-health-consolidated-head'),
-        (new CDiv([
-            (new CTag('table', true, [
-                (new CTag('thead', true, new CTag('tr', true, [
-                    new CTag('th', true, _('Proxy')),
-                    new CTag('th', true, _('Tipo')),
-                    new CTag('th', true, _('State')),
-                    new CTag('th', true, _('Score')),
-                    new CTag('th', true, _('Versao')),
-                    new CTag('th', true, _('VPS P95')),
-                    new CTag('th', true, _('Unsupported %')),
-                    new CTag('th', true, _('CPU P95')),
-                    new CTag('th', true, _('Mem total GB')),
-                    new CTag('th', true, _('Mem P95')),
-                    new CTag('th', true, _('Mem media')),
-                    new CTag('th', true, _('Disco P95')),
-                    new CTag('th', true, _('Resumo'))
-                ]))),
-                (new CTag('tbody', true))->setAttribute('data-proxy-table', 'overview')
-            ]))->addClass('proxy-health-table')
-        ]))->addClass('proxy-health-consolidated-body')
-    ]))->addClass('proxy-health-panel proxy-health-consolidated-panel')
-        ->setAttribute('data-proxy-consolidated-panel', '1'),
-
-    (new CDiv())->setId('proxy-health-cards')->addClass('proxy-health-cards')
+    $distribution,
+    (new CDiv())->setId('proxy-health-cards')->addClass('proxy-health-cards'),
+    (new CDiv())->addClass('proxy-health-excluded-panel')->setAttribute('data-proxy-excluded-panel', '1')
 ]))->addClass('proxy-health-pane is-active')->setAttribute('data-proxy-pane', 'overview');
 
 $config = (new CDiv([
@@ -422,7 +419,7 @@ $rules = (new CDiv([
 ]))->addClass('proxy-health-pane')->setAttribute('data-proxy-pane', 'rules');
 
 $page->addItem(
-    (new CDiv([$toolbar, $overview, $config, $rules]))
+    (new CDiv([$header, $overview, $config, $rules]))
         ->setId('proxy-health-assessment')
         ->addClass('proxy-health')
         ->setAttribute('data-proxy-health-payload', $data['payload'])

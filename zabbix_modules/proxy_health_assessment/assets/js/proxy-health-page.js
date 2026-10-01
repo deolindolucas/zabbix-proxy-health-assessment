@@ -77,6 +77,21 @@
         return parts;
     };
     const objectType = (proxy) => proxy.assessment_role === 'server' ? 'Zabbix Server' : 'Zabbix Proxy';
+    const stateClass = (state) => ({OK: 'ok', Atencao: 'attention', Risco: 'risk', Critico: 'critical'})[state] || 'ok';
+    const stateLabel = (state) => ({OK: 'OK', Atencao: 'Atenção', Risco: 'Risco', Critico: 'Crítico'})[state] || state;
+    const points1 = (value) => fmt(value, Number(value) % 1 === 0 ? 0 : 1);
+    const percentFormat = (value) => `${value.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}%`;
+    const countFormat = (value) => Math.round(value).toLocaleString('pt-BR');
+    // Colunas da tabela: campo do payload e os settings de atencao/critico usados na regua de cada barra.
+    const METRIC_COLUMNS = [
+        {label: 'CPU P95', field: 'cpu_p95', warn: 'cpu_p95_max', crit: 'cpu_p95_crit', percent: true, format: percentFormat},
+        {label: 'Mem P95', field: 'memory_p95', warn: 'memory_p95_max', crit: 'memory_p95_crit', percent: true, format: percentFormat},
+        {label: 'Mem média', field: 'memory_avg', warn: 'memory_avg_max', crit: 'memory_avg_crit', percent: true, format: percentFormat},
+        {label: 'Disco P95', field: 'disk_p95', warn: 'disk_p95_max', crit: 'disk_p95_crit', percent: true, format: percentFormat},
+        {label: 'VPS P95', field: 'vps_p95', warn: 'vps_max', crit: 'vps_crit', format: countFormat},
+        {label: 'Fila 10m', field: 'queue_10m_p95', warn: 'queue_10m_max', crit: 'queue_10m_crit', format: countFormat},
+        {label: 'Unsup.', field: 'unsupported_pct', factor: 100, warn: 'unsupported_max_percent', crit: 'unsupported_crit_percent', percent: true, format: percentFormat}
+    ];
 
     class ProxyHealthPage {
         constructor(root) {
@@ -98,9 +113,8 @@
             this.loading = this.createLoadingState();
             this.kpiFilter = null;
             this.excludedOpen = false;
-            this.selectedHost = null;
+            this.openHost = undefined;
             this.detailTabs = {};
-            this.consolidatedOpen = false;
 
             root.addEventListener('click', (event) => this.onClick(event));
             root.addEventListener('keydown', (event) => this.onKeyDown(event));
@@ -265,19 +279,6 @@
                 return;
             }
 
-            if (event.target.closest('[data-proxy-clear-search]') && this.search) {
-                this.search.value = '';
-                this.search.focus();
-                this.render();
-                return;
-            }
-
-            if (event.target.closest('[data-proxy-consolidated-toggle]')) {
-                this.consolidatedOpen = !this.consolidatedOpen;
-                this.renderConsolidatedPanel();
-                return;
-            }
-
             const expand = event.target.closest('[data-proxy-expand]');
             if (expand && this.root.contains(expand)) {
                 const host = expand.dataset.proxyExpand;
@@ -299,8 +300,9 @@
             }
 
             const selected = event.target.closest('[data-proxy-select]');
-            if (selected && this.root.contains(selected)) {
-                this.selectedHost = selected.dataset.proxySelect;
+            if (selected && this.root.contains(selected) && !event.target.closest('a')) {
+                const host = selected.dataset.proxySelect;
+                this.openHost = this.openHost === host ? null : host;
                 this.render();
             }
         }
@@ -344,8 +346,10 @@
         toggleKpiFilter(name) {
             if (name === 'excluded') {
                 this.excludedOpen = !this.excludedOpen;
-                this.kpiFilter = null;
                 this.render();
+                if (this.excludedOpen) {
+                    this.root.querySelector('[data-proxy-excluded-panel]')?.scrollIntoView({block: 'nearest'});
+                }
                 return;
             }
 
@@ -386,25 +390,9 @@
             const baseProxies = this.searchFilteredProxies();
             const proxies = this.filteredProxies(baseProxies);
             this.renderKpis(baseProxies);
-            this.renderExcludedPanel();
+            this.renderDistribution(baseProxies);
             this.renderCards(proxies);
-            this.renderOverviewTable(proxies);
-            this.renderConsolidatedPanel();
-            this.renderConfigTables();
-        }
-
-        renderConsolidatedPanel() {
-            const panel = this.root.querySelector('[data-proxy-consolidated-panel]');
-            if (!panel) {
-                return;
-            }
-
-            const toggle = panel.querySelector('[data-proxy-consolidated-toggle]');
-            panel.classList.toggle('is-open', this.consolidatedOpen);
-            if (toggle) {
-                toggle.textContent = this.consolidatedOpen ? 'Ocultar detalhes' : 'Mostrar detalhes';
-                toggle.setAttribute('aria-expanded', this.consolidatedOpen ? 'true' : 'false');
-            }
+            this.renderExcludedPanel();
         }
 
         renderKpis(proxies) {
@@ -430,6 +418,48 @@
             });
         }
 
+        renderDistribution(proxies) {
+            const bar = this.root.querySelector('[data-proxy-distribution-bar]');
+            const summary = this.root.querySelector('[data-proxy-distribution-summary]');
+            const excluded = (this.data.excluded_offline || []).length;
+            const groups = [
+                ['ok', proxies.filter((proxy) => proxy.state === 'OK').length],
+                ['attention', proxies.filter((proxy) => proxy.state === 'Atencao').length],
+                ['risk', proxies.filter((proxy) => proxy.state === 'Risco' || proxy.state === 'Critico').length],
+                ['excluded', excluded]
+            ];
+
+            if (bar) {
+                bar.replaceChildren();
+                groups.filter(([, count]) => count > 0).forEach(([name, count]) => {
+                    const segment = document.createElement('span');
+                    segment.className = `is-${name}`;
+                    segment.style.flexGrow = String(count);
+                    bar.append(segment);
+                });
+            }
+
+            const totalLabel = this.root.querySelector('[data-proxy-kpi-total-label]');
+            if (totalLabel) {
+                totalLabel.textContent = proxies.length === 1 ? ' avaliado' : ' avaliados';
+            }
+
+            if (summary) {
+                if (proxies.length === 0) {
+                    summary.textContent = '';
+                    return;
+                }
+                const worst = proxies.reduce((min, proxy) => Number(proxy.score) < Number(min.score) ? proxy : min, proxies[0]);
+                const counts = new Map();
+                proxies.forEach((proxy) => this.deductions(proxy.summary).forEach((deduction) => {
+                    counts.set(deduction.label, (counts.get(deduction.label) || 0) + 1);
+                }));
+                const common = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+                summary.textContent = `Pior nota ${points1(worst.score)} (${worst.host})`
+                    + (common ? ` · desconto mais comum: ${common[0]}` : ' · nenhum desconto aplicado');
+            }
+        }
+
         renderExcludedPanel() {
             const panel = this.root.querySelector('[data-proxy-excluded-panel]');
             if (!panel) {
@@ -437,21 +467,26 @@
             }
 
             panel.replaceChildren();
+            const excluded = this.data.excluded_offline || [];
+            panel.hidden = excluded.length === 0;
             panel.classList.toggle('is-open', this.excludedOpen);
-            if (!this.excludedOpen) {
+            if (excluded.length === 0) {
                 return;
             }
 
-            const excluded = this.data.excluded_offline || [];
-            const title = document.createElement('h3');
-            title.textContent = 'Proxies fora do escopo';
-            panel.append(title);
+            const head = document.createElement('button');
+            head.type = 'button';
+            head.className = 'proxy-health-excluded-head';
+            head.dataset.proxyKpiFilter = 'excluded';
+            head.setAttribute('aria-expanded', this.excludedOpen ? 'true' : 'false');
+            head.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg><span class="proxy-health-swatch is-excluded"></span><strong></strong><span class="proxy-health-muted"></span>';
+            head.querySelector('strong').textContent = `${excluded.length} fora do escopo`;
+            head.querySelector('.proxy-health-muted').textContent = excluded
+                .map((row) => `${row.host || '—'} (${this.ageLabel(row.lastaccess_age)})`)
+                .join(' · ');
+            panel.append(head);
 
-            if (excluded.length === 0) {
-                const empty = document.createElement('div');
-                empty.className = 'proxy-health-muted';
-                empty.textContent = 'Nenhum proxy foi deixado de fora pelos filtros atuais.';
-                panel.append(empty);
+            if (!this.excludedOpen) {
                 return;
             }
 
@@ -462,7 +497,7 @@
                     <tr>
                         <th>Proxy</th>
                         <th>Motivo</th>
-                        <th>Idade do ultimo acesso</th>
+                        <th>Ultimo contato ha</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -470,11 +505,11 @@
             const tbody = table.querySelector('tbody');
             excluded.forEach((row) => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${this.escapeHtml(row.host || '—')}</td>
-                    <td>${this.escapeHtml(row.reason || '—')}</td>
-                    <td>${this.escapeHtml(this.ageLabel(row.lastaccess_age))}</td>
-                `;
+                [row.host || '—', row.reason || '—', this.ageLabel(row.lastaccess_age)].forEach((value) => {
+                    const td = document.createElement('td');
+                    td.textContent = value;
+                    tr.append(td);
+                });
                 tbody.append(tr);
             });
             panel.append(table);
@@ -525,32 +560,45 @@
                 return;
             }
 
-            if (!this.selectedHost || !proxies.some((proxy) => proxy.host === this.selectedHost)) {
-                this.selectedHost = proxies[0].host;
+            // Na primeira renderizacao abre o pior objeto quando ele nao esta OK; depois respeita o usuario.
+            if (this.openHost === undefined) {
+                this.openHost = proxies[0].state !== 'OK' ? proxies[0].host : null;
             }
 
-            const selectedProxy = proxies.find((proxy) => proxy.host === this.selectedHost) || proxies[0];
-            const layout = document.createElement('div');
-            layout.className = 'proxy-health-results-layout';
+            const wrapper = document.createElement('div');
+            wrapper.className = 'proxy-health-grid-wrap';
+            const table = document.createElement('table');
+            table.className = 'proxy-health-grid';
 
-            const queue = document.createElement('section');
-            queue.className = 'proxy-health-results-panel proxy-health-assessment-queue';
-            queue.innerHTML = `
-                <div class="proxy-health-results-head">
-                    <h3>Fila de avaliacao</h3>
-                    <span>Ordenado por severidade e score</span>
-                </div>
-            `;
+            const thead = document.createElement('thead');
+            const headRow = document.createElement('tr');
+            headRow.append(this.headCell('Objeto', 'is-left'), this.headCell('Nota', 'is-left'));
+            METRIC_COLUMNS.forEach((column) => headRow.append(this.headCell(column.label)));
+            headRow.append(this.headCell('Descontos', 'is-left'));
+            thead.append(headRow);
 
-            const list = document.createElement('div');
-            list.className = 'proxy-health-object-list';
+            const tbody = document.createElement('tbody');
             proxies.forEach((proxy) => {
-                list.append(this.objectRow(proxy, proxy.host === selectedProxy.host));
+                const open = proxy.host === this.openHost;
+                tbody.append(this.objectRow(proxy, open));
+                if (open) {
+                    tbody.append(this.detailRow(proxy));
+                }
             });
-            queue.append(list);
 
-            layout.append(queue, this.diagnosticPanel(selectedProxy));
-            this.cards.append(layout);
+            table.append(thead, tbody);
+            wrapper.append(table);
+            this.cards.append(wrapper);
+        }
+
+        headCell(label, className = '') {
+            const th = document.createElement('th');
+            th.scope = 'col';
+            th.textContent = label;
+            if (className) {
+                th.className = className;
+            }
+            return th;
         }
 
         hostGroupNotice() {
@@ -573,128 +621,279 @@
             return notice;
         }
 
-        objectRow(proxy, selected) {
-            const row = document.createElement('button');
-            row.type = 'button';
-            row.className = `proxy-health-card is-${proxy.state.toLocaleLowerCase()}${selected ? ' is-selected' : ''}`;
+        objectRow(proxy, open) {
+            const row = document.createElement('tr');
+            row.className = `proxy-health-row is-${stateClass(proxy.state)}${open ? ' is-open' : ''}`;
             row.dataset.proxySelect = proxy.host;
-            row.setAttribute('aria-pressed', selected ? 'true' : 'false');
 
-            const score = document.createElement('div');
-            score.className = 'proxy-health-score-ring';
-            score.style.setProperty('--score', proxy.score);
-            score.innerHTML = `<strong>${proxy.score}</strong><span>${proxy.state}</span>`;
-
-            const identity = document.createElement('div');
-            identity.className = 'proxy-health-card-identity';
-            const title = document.createElement('h3');
-            title.textContent = proxy.host;
-
+            const objectCell = document.createElement('td');
+            objectCell.className = 'is-left proxy-health-object';
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'proxy-health-row-toggle';
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            toggle.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg><span></span>';
+            toggle.querySelector('span').textContent = proxy.host;
             const meta = document.createElement('div');
-            meta.className = 'proxy-health-card-meta';
-            meta.textContent = `${objectType(proxy)} · Versao ${proxy.version || '—'} · VPS P95 ${fmt(proxy.vps_p95, 0)} · Mem ${fmt(proxy.memory_total_gb, 1, ' GB')}`;
-            identity.append(title, meta);
+            meta.className = 'proxy-health-object-meta';
+            meta.textContent = [
+                proxy.assessment_role === 'server' ? 'Server' : 'Proxy',
+                proxy.version || 'versao —',
+                proxy.memory_total_gb !== null && proxy.memory_total_gb !== undefined
+                    ? `${Number(proxy.memory_total_gb).toLocaleString('pt-BR', {maximumFractionDigits: 1})} GB RAM`
+                    : null
+            ].filter(Boolean).join(' · ');
+            objectCell.append(toggle, meta);
 
-            const chips = this.summaryChips(proxy.summary);
-            const context = document.createElement('div');
-            context.className = 'proxy-health-card-hover-context';
-            const contextText = splitSummary(proxy.summary)
-                .slice(0, 2)
-                .map((summary) => {
-                    const parts = this.summaryParts(summary);
-                    return `${parts.title}: ${parts.detail}`;
-                })
-                .join(' · ');
-            context.textContent = contextText || 'Proxy dentro dos parametros configurados para o assessment.';
+            const scoreCell = document.createElement('td');
+            scoreCell.className = 'is-left';
+            const score = Number(proxy.score);
+            const scoreBox = document.createElement('div');
+            scoreBox.className = 'proxy-health-score';
+            const scoreValue = document.createElement('strong');
+            scoreValue.textContent = fmt(score, Number.isInteger(score) ? 0 : 1);
+            const scoreSide = document.createElement('div');
+            const stateText = document.createElement('span');
+            stateText.className = 'proxy-health-state';
+            stateText.textContent = stateLabel(proxy.state);
+            const scoreMeter = document.createElement('div');
+            scoreMeter.className = 'proxy-health-meter';
+            const scoreFill = document.createElement('i');
+            scoreFill.style.width = `${Math.max(0, Math.min(100, score || 0))}%`;
+            scoreMeter.append(scoreFill);
+            scoreSide.append(stateText, scoreMeter);
+            scoreBox.append(scoreValue, scoreSide);
+            scoreCell.append(scoreBox);
 
-            row.append(score, identity, chips, context);
+            row.append(objectCell, scoreCell);
+            METRIC_COLUMNS.forEach((column) => row.append(this.metricCell(proxy, column)));
+            row.append(this.deductionCell(proxy));
             return row;
         }
 
-        diagnosticPanel(proxy) {
-            // <section>, nao <aside>: o tema do Zabbix 8.0 aplica `aside { grid-area: sidebar }` globalmente
-            // e tiraria o painel da coluna do grid.
-            const panel = document.createElement('section');
-            panel.className = `proxy-health-results-panel proxy-health-diagnostic is-${proxy.state.toLocaleLowerCase()}`;
+        metricCell(proxy, column) {
+            const cell = document.createElement('td');
+            const raw = proxy[column.field];
+            const value = raw === null || raw === undefined || raw === '' ? null : Number(raw) * (column.factor || 1);
+            const settings = this.data.settings || {};
+            const warn = Number(settings[column.warn]);
+            const crit = Number(settings[column.crit]);
 
-            const head = document.createElement('div');
-            head.className = 'proxy-health-results-head';
-            const heading = document.createElement('h3');
-            heading.textContent = 'Overview';
-            const toggle = document.createElement('button');
-            toggle.type = 'button';
-            toggle.className = 'proxy-health-expand';
-            toggle.dataset.proxyExpand = proxy.host;
-            toggle.setAttribute('aria-expanded', this.expanded.has(proxy.host) ? 'true' : 'false');
-            toggle.textContent = this.expanded.has(proxy.host) ? 'Ocultar leituras' : 'Expandir leituras';
-            head.append(heading, toggle);
+            const label = document.createElement('span');
+            label.className = 'proxy-health-num';
+            label.textContent = value === null || !Number.isFinite(value) ? '—' : column.format(value);
+            cell.append(label);
 
-            const focus = document.createElement('div');
-            focus.className = 'proxy-health-diagnostic-focus';
-            const score = document.createElement('div');
-            score.className = 'proxy-health-score-ring';
-            score.style.setProperty('--score', proxy.score);
-            score.innerHTML = `<strong>${proxy.score}</strong><span>${proxy.state}</span>`;
-
-            const identity = document.createElement('div');
-            const title = document.createElement('h3');
-            title.textContent = proxy.host;
-            const meta = document.createElement('div');
-            meta.className = 'proxy-health-card-meta';
-            meta.textContent = `${objectType(proxy)} · Versao ${proxy.version || '—'} · VPS P95 ${fmt(proxy.vps_p95, 0)} · Mem ${fmt(proxy.memory_total_gb, 1, ' GB')}`;
-            identity.append(title, meta);
-            focus.append(score, identity);
-
-            const metrics = document.createElement('div');
-            metrics.className = 'proxy-health-key-metrics';
-            [
-                ['CPU P95', fmt(proxy.cpu_p95, 1, '%')],
-                ['Mem P95', fmt(proxy.memory_p95, 1, '%')],
-                ['Mem media', fmt(proxy.memory_avg, 1, '%')],
-                ['Disco P95', fmt(proxy.disk_p95, 1, '%')],
-                ['Unsupported', pct(proxy.unsupported_pct)],
-                ['Fila 10m P95', fmt(proxy.queue_10m_p95, 0)]
-            ].forEach(([label, value]) => {
-                const metric = document.createElement('div');
-                metric.className = 'proxy-health-key-metric';
-                metric.innerHTML = '<span></span><strong></strong>';
-                metric.children[0].textContent = label;
-                metric.children[1].textContent = value;
-                metrics.append(metric);
-            });
-
-            const summaryTitle = document.createElement('div');
-            summaryTitle.className = 'proxy-health-section-label';
-            summaryTitle.textContent = 'Pontos de Atencao';
-
-            panel.append(head, focus, metrics, summaryTitle, this.summaryCards(proxy.summary));
-
-            if (this.expanded.has(proxy.host)) {
-                panel.append(this.details(proxy.host));
+            if (value === null || !Number.isFinite(value) || !Number.isFinite(warn)) {
+                return cell;
             }
 
-            return panel;
+            const scale = column.percent ? 100 : Math.max(Number.isFinite(crit) ? crit : 0, warn * 2, value, 1);
+            const level = Number.isFinite(crit) && crit > warn && value >= crit
+                ? 'is-risk'
+                : (value > warn ? 'is-attention' : 'is-ok');
+            const meter = document.createElement('div');
+            meter.className = `proxy-health-meter ${level}`;
+            meter.title = `Limite de atencao ${column.format(warn)}${Number.isFinite(crit) ? ` · critico ${column.format(crit)}` : ''}`;
+            const fill = document.createElement('i');
+            fill.style.width = `${Math.max(1, Math.min(100, (value / scale) * 100))}%`;
+            const tick = document.createElement('b');
+            tick.style.left = `${Math.min(100, (warn / scale) * 100)}%`;
+            meter.append(fill, tick);
+            cell.append(meter);
+            return cell;
         }
 
-        summaryChips(summaryText) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'proxy-health-summary-chips';
-            const summaries = splitSummary(summaryText).slice(0, 5);
-            if (summaries.length === 0) {
-                const chip = document.createElement('span');
-                chip.className = 'proxy-health-summary-chip';
-                chip.textContent = 'Sem achados';
-                wrapper.append(chip);
-                return wrapper;
+        deductionCell(proxy) {
+            const cell = document.createElement('td');
+            cell.className = 'is-left';
+            const deductions = this.deductions(proxy.summary);
+            if (deductions.length === 0) {
+                const none = document.createElement('span');
+                none.className = 'proxy-health-muted';
+                none.textContent = 'Sem descontos';
+                cell.append(none);
+                return cell;
             }
 
-            summaries.forEach((summary) => {
+            const list = document.createElement('div');
+            list.className = 'proxy-health-chips';
+            deductions.slice(0, 3).forEach((deduction) => {
                 const chip = document.createElement('span');
-                chip.className = 'proxy-health-summary-chip';
-                chip.textContent = this.summaryParts(summary).title;
-                wrapper.append(chip);
+                chip.className = `proxy-health-chip is-${stateClass(proxy.state)}`;
+                const points = document.createElement('b');
+                points.textContent = `−${points1(deduction.points)}`;
+                const text = document.createElement('span');
+                text.textContent = deduction.label;
+                chip.append(points, text);
+                list.append(chip);
             });
-            return wrapper;
+            if (deductions.length > 3) {
+                const more = document.createElement('span');
+                more.className = 'proxy-health-muted';
+                more.textContent = `+${deductions.length - 3}`;
+                list.append(more);
+            }
+            cell.append(list);
+            return cell;
+        }
+
+        // "Alerta: Alerta de saude do proxy ativo (-20)" -> {label: 'Alerta de saude do proxy ativo', points: 20}.
+        // Itens sem "(-X)" sao achados que nao descontam pontos.
+        deductions(summaryText) {
+            return splitSummary(summaryText)
+                .map((summary) => {
+                    const match = summary.match(/^(.*?)\s*\(\s*-\s*([\d.,]+)\s*\)\s*$/);
+                    if (!match) {
+                        return null;
+                    }
+                    const points = Number(match[2].replace(',', '.'));
+                    return Number.isFinite(points) && points > 0
+                        ? {label: match[1].replace(/^[^:]{1,40}:\s*/, '').trim(), points}
+                        : null;
+                })
+                .filter(Boolean)
+                .sort((a, b) => b.points - a.points);
+        }
+
+        findings(summaryText) {
+            return splitSummary(summaryText)
+                .filter((summary) => !/\(\s*-\s*[\d.,]+\s*\)\s*$/.test(summary))
+                .filter((summary) => !/dentro dos parametros/i.test(summary));
+        }
+
+        detailRow(proxy) {
+            const row = document.createElement('tr');
+            row.className = `proxy-health-detail-row is-${stateClass(proxy.state)}`;
+            const cell = document.createElement('td');
+            cell.colSpan = METRIC_COLUMNS.length + 3;
+
+            const grid = document.createElement('div');
+            grid.className = 'proxy-health-detail-grid';
+            grid.append(this.scoreComposition(proxy), this.problemList(proxy));
+            cell.append(grid);
+
+            const expanded = this.expanded.has(proxy.host);
+            const readings = document.createElement('button');
+            readings.type = 'button';
+            readings.className = 'proxy-health-link-button';
+            readings.dataset.proxyExpand = proxy.host;
+            readings.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            readings.textContent = expanded ? 'Ocultar leituras de processos e caches' : 'Ver leituras de processos e caches';
+            cell.append(readings);
+            if (expanded) {
+                cell.append(this.details(proxy.host));
+            }
+
+            row.append(cell);
+            return row;
+        }
+
+        scoreComposition(proxy) {
+            const section = document.createElement('section');
+            section.className = 'proxy-health-detail-block';
+            const title = document.createElement('h4');
+            title.textContent = 'Composicao da nota';
+
+            const score = Math.max(0, Number(proxy.score) || 0);
+            const deductions = this.deductions(proxy.summary);
+            const bar = document.createElement('div');
+            bar.className = 'proxy-health-composition';
+            const remaining = document.createElement('div');
+            remaining.className = `is-remaining is-${stateClass(proxy.state)}`;
+            remaining.style.width = `${score}%`;
+            remaining.textContent = `${points1(score)} restantes`;
+            bar.append(remaining);
+            deductions.forEach((deduction) => {
+                const part = document.createElement('div');
+                part.className = 'is-deduction';
+                part.style.width = `${deduction.points}%`;
+                part.title = `${deduction.label} (−${points1(deduction.points)})`;
+                part.textContent = deduction.points >= 6 ? `−${points1(deduction.points)}` : '';
+                bar.append(part);
+            });
+
+            const explain = document.createElement('p');
+            explain.className = 'proxy-health-muted';
+            explain.textContent = deductions.length === 0
+                ? 'Partiu de 100 e nenhuma regra descontou pontos.'
+                : `Partiu de 100. ${deductions.map((d) => `${d.label} (−${points1(d.points)})`).join('; ')}.`;
+            section.append(title, bar, explain);
+
+            const findings = this.findings(proxy.summary);
+            if (findings.length > 0) {
+                const label = document.createElement('h4');
+                label.textContent = 'Recomendacoes sem desconto';
+                const list = document.createElement('ul');
+                list.className = 'proxy-health-findings';
+                findings.forEach((finding) => {
+                    const item = document.createElement('li');
+                    item.textContent = finding;
+                    list.append(item);
+                });
+                section.append(label, list);
+            }
+            return section;
+        }
+
+        problemList(proxy) {
+            const section = document.createElement('section');
+            section.className = 'proxy-health-detail-block';
+            const problems = (this.data.active_problems || [])
+                .filter((problem) => problem.host === proxy.host || problem.host === proxy.technical_name)
+                .sort((a, b) => (b.relevant === 'Sim') - (a.relevant === 'Sim') || b.severity_num - a.severity_num);
+            const relevant = problems.filter((problem) => problem.relevant === 'Sim').length;
+
+            const title = document.createElement('h4');
+            title.textContent = problems.length === 0
+                ? 'Problemas ativos'
+                : `Problemas ativos · ${problems.length}${relevant ? ` (${relevant} contam na nota)` : ''}`;
+            section.append(title);
+
+            if (problems.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'proxy-health-muted';
+                empty.textContent = 'Nenhum problema ativo neste objeto.';
+                section.append(empty);
+                return section;
+            }
+
+            const list = document.createElement('ul');
+            list.className = 'proxy-health-problems';
+            problems.slice(0, 6).forEach((problem) => {
+                const item = document.createElement('li');
+                if (problem.relevant !== 'Sim') {
+                    item.className = 'is-muted';
+                }
+                const dot = document.createElement('span');
+                dot.className = `proxy-health-dot is-sev-${Math.max(0, Math.min(5, Number(problem.severity_num) || 0))}`;
+                const name = document.createElement('span');
+                name.className = 'proxy-health-problem-name';
+                // O Zabbix prefixa o nome com "<host>: "; o objeto ja esta no contexto da linha.
+                const prefix = `${proxy.host}: `;
+                name.textContent = problem.name.startsWith(prefix) ? problem.name.slice(prefix.length) : problem.name;
+                name.title = problem.name;
+                const age = document.createElement('span');
+                age.className = 'proxy-health-num';
+                age.textContent = problem.age || problem.clock || '';
+                item.append(dot, name, age);
+                list.append(item);
+            });
+            section.append(list);
+
+            if (proxy.hostid) {
+                const url = new URL('zabbix.php', window.location.href);
+                url.search = '';
+                url.searchParams.set('action', 'problem.view');
+                url.searchParams.set('filter_set', '1');
+                url.searchParams.append('hostids[]', proxy.hostid);
+                const link = document.createElement('a');
+                link.className = 'proxy-health-link';
+                link.href = url.toString();
+                link.textContent = problems.length > 6 ? `Ver os ${problems.length} problemas no Zabbix` : 'Abrir em Problemas';
+                section.append(link);
+            }
+            return section;
         }
 
         details(host) {
@@ -857,37 +1056,6 @@
             return section;
         }
 
-        bar(label, value) {
-            const row = document.createElement('div');
-            row.className = 'proxy-health-bar-row';
-            const width = Math.max(0, Math.min(100, Number(value) || 0));
-            row.innerHTML = `<span></span><div><i style="width: ${width}%"></i></div><b></b>`;
-            row.children[0].textContent = label;
-            row.children[2].textContent = fmt(value, 1, '%');
-            return row;
-        }
-
-        renderOverviewTable(proxies) {
-            this.replaceRows('overview', proxies, (proxy) => [
-                proxy.host,
-                objectType(proxy),
-                proxy.state,
-                proxy.score,
-                proxy.version || '—',
-                fmt(proxy.vps_p95, 0),
-                pct(proxy.unsupported_pct),
-                fmt(proxy.cpu_p95, 1, '%'),
-                fmt(proxy.memory_total_gb, 1, ' GB'),
-                fmt(proxy.memory_p95, 1, '%'),
-                fmt(proxy.memory_avg, 1, '%'),
-                fmt(proxy.disk_p95, 1, '%'),
-                proxy.summary
-            ]);
-        }
-
-        renderConfigTables() {
-        }
-
         exportReport(format) {
             const stamp = new Date().toISOString()
                 .replace(/[-:]/g, '')
@@ -1044,56 +1212,6 @@
             });
 
             return rows;
-        }
-
-        summaryCards(summaryText) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'proxy-health-summary-cards';
-
-            splitSummary(summaryText).forEach((summary) => {
-                const card = document.createElement('div');
-                card.className = 'proxy-health-summary-card';
-
-                const title = document.createElement('strong');
-                const detail = document.createElement('span');
-                const parts = this.summaryParts(summary);
-
-                title.textContent = parts.title;
-                detail.textContent = parts.detail;
-                card.append(title, detail);
-                wrapper.append(card);
-            });
-
-            return wrapper;
-        }
-
-        summaryParts(summary) {
-            const colon = summary.indexOf(':');
-            if (colon > 0 && colon < 60) {
-                return {
-                    title: summary.slice(0, colon).trim(),
-                    detail: summary.slice(colon + 1).trim()
-                };
-            }
-
-            const normalized = normalize(summary);
-            const known = [
-                ['disco', 'Disco'],
-                ['cpu', 'CPU'],
-                ['memoria', 'Memoria'],
-                ['preprocessing queue', 'Preprocessing queue'],
-                ['fila', 'Fila'],
-                ['unsupported', 'Itens unsupported'],
-                ['versao', 'Versao'],
-                ['alerta', 'Alerta'],
-                ['vps', 'VPS']
-            ];
-            const matched = known.find(([needle]) => normalized.includes(needle));
-
-            return {
-                title: matched ? matched[1] : 'Resumo',
-                detail: summary
-            };
         }
 
         xlsxWorkbook() {
