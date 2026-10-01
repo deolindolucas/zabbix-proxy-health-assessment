@@ -10,6 +10,26 @@
 $page = (new CHtmlPage())->setTitle(_('Proxy Health Assessment'));
 $settings = $data['settings'];
 
+$asset_base = 'modules/proxy_health_assessment/assets';
+$asset_path = dirname(__DIR__).'/assets';
+$module_manifest = json_decode((string) @file_get_contents(dirname(__DIR__).'/manifest.json'), true);
+$module_version = is_array($module_manifest) && isset($module_manifest['version'])
+    ? 'v'.$module_manifest['version']
+    : 'v4';
+$asset_url = static function(string $relative) use ($asset_base, $asset_path): string {
+    $url = new CUrl($asset_base.'/'.$relative);
+    $file = $asset_path.'/'.$relative;
+
+    if (is_file($file)) {
+        $url->setArgument('v', (string) filemtime($file));
+    }
+
+    return $url->getUrl();
+};
+
+$this
+    ->addCssFile($asset_url('css/proxy-health-page.css'));
+
 $field = static function($label, $control, string $help = ''): CDiv {
     $label_items = [$label];
     if ($help !== '') {
@@ -173,20 +193,30 @@ $config_form = (new CForm('get'))
         $block(_('Thresholds principais do score'), [
             $input(_('Dias de trends'), 'trend_days', $settings['trend_days'], 'number', ['min' => 7, 'max' => 30, 'step' => 1], _('Janela usada para medias historicas. Minimo 7 dias e maximo 30 dias.')),
             $input(_('Unsupported maximo (%)'), 'unsupported_max', $settings['unsupported_max_percent'], 'number', ['min' => 0, 'step' => 1], _('Percentual maximo de itens unsupported no escopo do proxy.')),
-            $input(_('VPS atual maximo'), 'vps_max', $settings['vps_max'], 'number', [], _('Valores por segundo acima deste limite reduzem score.')),
-            $input(_('CPU atual maxima'), 'cpu_current_max', $settings['cpu_current_max'], 'number', [], _('Uso atual de CPU maximo aceito.')),
+            $input(_('Unsupported critico (%)'), 'unsupported_crit', $settings['unsupported_crit_percent'], 'number', ['min' => 0, 'step' => 1], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
+            $input(_('VPS P95 maximo'), 'vps_max', $settings['vps_max'], 'number', [], _('P95 dos maximos horarios de valores por segundo acima deste limite reduz score.')),
+            $input(_('VPS P95 critico'), 'vps_crit', $settings['vps_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
+            $input(_('CPU P95 maxima'), 'cpu_p95_max', $settings['cpu_p95_max'], 'number', [], _('P95 dos maximos horarios de CPU na janela de trends.')),
+            $input(_('CPU P95 critica'), 'cpu_p95_crit', $settings['cpu_p95_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
             $input(_('CPU media maxima'), 'cpu_avg_max', $settings['cpu_avg_max'], 'number', [], _('Media historica de CPU maxima aceita na janela de trends.')),
-            $input(_('Memoria atual maxima'), 'memory_current_max', $settings['memory_current_max'], 'number', [], _('Uso atual de memoria maximo aceito.')),
+            $input(_('CPU media critica'), 'cpu_avg_crit', $settings['cpu_avg_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
+            $input(_('Memoria P95 maxima'), 'memory_p95_max', $settings['memory_p95_max'], 'number', [], _('P95 dos maximos horarios de memoria na janela de trends.')),
+            $input(_('Memoria P95 critica'), 'memory_p95_crit', $settings['memory_p95_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
             $input(_('Memoria media maxima'), 'memory_avg_max', $settings['memory_avg_max'], 'number', [], _('Media historica de memoria maxima aceita na janela de trends.')),
-            $input(_('Disco atual maximo'), 'disk_current_max', $settings['disk_current_max'], 'number', [], _('Uso atual de disco maximo aceito.')),
+            $input(_('Memoria media critica'), 'memory_avg_crit', $settings['memory_avg_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
+            $input(_('Disco P95 maximo'), 'disk_p95_max', $settings['disk_p95_max'], 'number', [], _('P95 dos maximos horarios de disco na janela de trends.')),
+            $input(_('Disco P95 critico'), 'disk_p95_crit', $settings['disk_p95_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
             $input(_('Disco media maxima'), 'disk_avg_max', $settings['disk_avg_max'], 'number', [], _('Media historica de disco maxima aceita na janela de trends.')),
-            $input(_('Fila 10m maxima'), 'queue_10m_max', $settings['queue_10m_max'], 'number', [], _('Tamanho maximo aceito para fila de itens acima de 10 minutos.')),
-            $input(_('Preproc queue maxima'), 'preproc_queue_max', $settings['preproc_queue_max'], 'number', [], _('Tamanho maximo aceito para fila de preprocessing.'))
+            $input(_('Disco media critica'), 'disk_avg_crit', $settings['disk_avg_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
+            $input(_('Fila 10m P95 maxima'), 'queue_10m_max', $settings['queue_10m_max'], 'number', [], _('P95 dos maximos horarios da fila de itens acima de 10 minutos.')),
+            $input(_('Fila 10m P95 critica'), 'queue_10m_crit', $settings['queue_10m_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
+            $input(_('Preproc queue P95 maxima'), 'preproc_queue_max', $settings['preproc_queue_max'], 'number', [], _('P95 dos maximos horarios da fila de preprocessing.')),
+            $input(_('Preproc queue P95 critica'), 'preproc_queue_crit', $settings['preproc_queue_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.'))
         ]),
         $block(_('Problemas orfaos'), [], $checkbox(_('Usar este bloco no assessment'), 'consider_orphans', $settings['consider_orphans'], _('Quando habilitado, problemas ativos sem trigger/item valido tambem podem afetar o score.'))),
         $block(_('Configuracao do proxy no score'), [
-            $input(_('Threshold pollers'), 'poller_threshold', $settings['poller_threshold'], 'number', [], _('Busy atual ou historico acima deste percentual gera avaliacao de ajuste.')),
-            $input(_('Threshold caches'), 'cache_threshold', $settings['cache_threshold'], 'number', [], _('Uso atual ou historico de cache acima deste percentual gera avaliacao de ajuste.'))
+            $input(_('Threshold pollers'), 'poller_threshold', $settings['poller_threshold'], 'number', [], _('Busy P95 ou media historica acima deste percentual gera avaliacao de ajuste.')),
+            $input(_('Threshold caches'), 'cache_threshold', $settings['cache_threshold'], 'number', [], _('Uso P95 ou media historica de cache acima deste percentual gera avaliacao de ajuste.'))
         ], $checkbox(_('Usar este bloco no assessment'), 'consider_config', $settings['consider_config'], _('Quando habilitado, problemas de processos/caches versus configuracao entram no score.'))),
         $block(_('Recomendacoes Process vs Config no resumo'), [], $checkbox(_('Mostrar no resumo sem alterar o score'), 'show_process_recommendations', $settings['show_process_recommendations'], _('Exibe recomendacoes operacionais no resumo visual sem penalizar o score.'))),
         (new CSubmit('apply', _('Aplicar')))->addClass(ZBX_STYLE_BTN_ALT)
@@ -241,7 +271,7 @@ $overview = (new CDiv([
     (new CDiv([
         (new CDiv([
             (new CTag('h2', true, _('Saude dos proxies')))->addClass('proxy-health-title'),
-            (new CDiv(_('Assessment v3.0 em tempo real, com proxies offline fora do escopo.')))
+            (new CDiv(sprintf(_('Assessment %s em tempo real, com proxies offline fora do escopo.'), $module_version)))
                 ->addClass('proxy-health-muted')
         ]))->addClass('proxy-health-heading'),
         (new CDiv([
@@ -273,29 +303,39 @@ $overview = (new CDiv([
 
     (new CDiv())->addClass('proxy-health-excluded-panel')->setAttribute('data-proxy-excluded-panel', '1'),
 
-    (new CDiv())->setId('proxy-health-cards')->addClass('proxy-health-cards'),
-
     (new CDiv([
-        (new CTag('h3', true, _('Detalhes consolidados')))->addClass('proxy-health-title'),
-        (new CTag('table', true, [
-            (new CTag('thead', true, new CTag('tr', true, [
-                new CTag('th', true, _('Proxy')),
-                new CTag('th', true, _('Tipo')),
-                new CTag('th', true, _('State')),
-                new CTag('th', true, _('Score')),
-                new CTag('th', true, _('Versao')),
-                new CTag('th', true, _('VPS atual')),
-                new CTag('th', true, _('Unsupported %')),
-                new CTag('th', true, _('CPU atual')),
-                new CTag('th', true, _('Mem total GB')),
-                new CTag('th', true, _('Mem atual')),
-                new CTag('th', true, _('Mem media')),
-                new CTag('th', true, _('Disco atual')),
-                new CTag('th', true, _('Resumo'))
-            ]))),
-            (new CTag('tbody', true))->setAttribute('data-proxy-table', 'overview')
-        ]))->addClass('proxy-health-table')
-    ]))->addClass('proxy-health-panel')
+        (new CDiv([
+            (new CTag('h3', true, _('Detalhes consolidados')))->addClass('proxy-health-title'),
+            (new CTag('button', true, _('Mostrar detalhes')))
+                ->addClass('proxy-health-consolidated-toggle')
+                ->setAttribute('type', 'button')
+                ->setAttribute('aria-expanded', 'false')
+                ->setAttribute('data-proxy-consolidated-toggle', '1')
+        ]))->addClass('proxy-health-consolidated-head'),
+        (new CDiv([
+            (new CTag('table', true, [
+                (new CTag('thead', true, new CTag('tr', true, [
+                    new CTag('th', true, _('Proxy')),
+                    new CTag('th', true, _('Tipo')),
+                    new CTag('th', true, _('State')),
+                    new CTag('th', true, _('Score')),
+                    new CTag('th', true, _('Versao')),
+                    new CTag('th', true, _('VPS P95')),
+                    new CTag('th', true, _('Unsupported %')),
+                    new CTag('th', true, _('CPU P95')),
+                    new CTag('th', true, _('Mem total GB')),
+                    new CTag('th', true, _('Mem P95')),
+                    new CTag('th', true, _('Mem media')),
+                    new CTag('th', true, _('Disco P95')),
+                    new CTag('th', true, _('Resumo'))
+                ]))),
+                (new CTag('tbody', true))->setAttribute('data-proxy-table', 'overview')
+            ]))->addClass('proxy-health-table')
+        ]))->addClass('proxy-health-consolidated-body')
+    ]))->addClass('proxy-health-panel proxy-health-consolidated-panel')
+        ->setAttribute('data-proxy-consolidated-panel', '1'),
+
+    (new CDiv())->setId('proxy-health-cards')->addClass('proxy-health-cards')
 ]))->addClass('proxy-health-pane is-active')->setAttribute('data-proxy-pane', 'overview');
 
 $config = (new CDiv([
@@ -334,6 +374,21 @@ $rules = (new CDiv([
             _('Problemas orfaos so entram no score quando o bloco correspondente esta habilitado na configuracao.'),
             _('Config issues so reduzem score quando o bloco de configuracao do proxy esta habilitado e ha processos/caches acima dos thresholds.')
         ]),
+        $rules_section(_('Calculo do score'), [
+            _('Cada proxy ou server inicia com score 100; o score minimo exibido e 0.'),
+            _('A classificacao final segue os cortes: OK para score maior ou igual a 90, Atencao para maior ou igual a 70, Risco para maior ou igual a 40 e Critico abaixo de 40.'),
+            _('Alertas Disaster ativos reduzem 50 pontos; alertas relevantes de saude do proxy/server reduzem 20 pontos.'),
+            _('Problemas orfaos Disaster reduzem 50 pontos e problemas orfaos relevantes reduzem 20 pontos, somente quando a opcao de considerar orfaos esta habilitada.'),
+            _('Versao abaixo do corte reduz 15 pontos. Itens unsupported acima do limite reduzem ate 15 pontos, de forma proporcional.'),
+            _('VPS, CPU, memoria, disco, fila 10m e preprocessing queue (P95 ou media) reduzem ate 10 pontos por criterio.'),
+            _('Regras de carga usam desconto proporcional: desconto = pontos maximos x (valor - limite) / (critico - limite), limitado entre 0 e o maximo. Ex.: CPU media com limite 75% e critico 95%: 76% desconta 0,5; 85% desconta 5; 95% ou mais desconta 10.'),
+            _('Alertas Disaster e relevantes, versao abaixo do corte e config issues continuam com desconto integral (binario). Se o valor critico nao for maior que o limite, a regra tambem volta a ser binaria.'),
+            _('O resumo mostra a contribuicao de cada regra entre parenteses, como "CPU media alta (-5)"; o score usa uma casa decimal.'),
+            _('P95 e o percentil 95 dos maximos horarios de trends na janela configurada: representa o pico tipico e ignora as 5% horas mais extremas. Ele substitui a leitura pontual (lastvalue), que dependia do momento em que a tela era aberta.'),
+            _('Versao, itens unsupported, ultimo acesso, memoria total e alertas continuam usando o valor atual, por serem estados e nao series de carga.'),
+            _('Quando configuracao do proxy esta habilitada, processos/caches com pressao operacional acima dos thresholds reduzem 15 pontos. Recomendacoes de diminuicao podem aparecer em Pontos de Atencao sem reduzir o score.'),
+            _('As medias historicas usam a janela de trends configurada na tela, entre 7 e 30 dias.')
+        ]),
         $rules_section(_('Zabbix Server'), [
             _('O host do Zabbix Server deve ser selecionado manualmente na configuracao quando tambem deve entrar no assessment.'),
             _('O host selecionado deve possuir monitoramento Linux default, health check do Zabbix Server e o template custom de leitura de configuracao para que as metricas sejam completas.'),
@@ -343,12 +398,14 @@ $rules = (new CDiv([
         $rules_section(_('Processos versus configuracao'), [
             _('Processos com parametro configuravel sao comparados com a diretiva equivalente do zabbix_proxy.conf, como StartPollers, StartPreprocessors, StartSNMPPollers e StartTrappers.'),
             _('Managers e processos internos sem diretiva de quantidade, como internal poller, task manager, self-monitoring e preprocessing manager, sao exibidos apenas como leitura operacional.'),
-            _('Avaliar aumento ocorre quando busy atual ou media historica ultrapassa o threshold de pollers.'),
-            _('Avaliar diminuicao ocorre quando o configurado esta acima do recomendado e a media historica esta baixa, ou quando uso atual e media historica sao zero e o configurado e maior que 1.'),
-            _('A recomendacao de diminuicao para pool sem uso e limitada a 1 processo, independente do recomendado calculado.')
+            _('Pollers comuns entram como Avaliar aumento quando o busy P95 ou a media historica ultrapassa o threshold de pollers; pools sem uso no P95 e na media podem recomendar reducao para 1.'),
+            _('Pollers/checadores assincronos, como agent poller, SNMP poller, HTTP agent poller e discovery worker, recomendam aumento gradual de 1 processo quando atingem 100% de busy.'),
+            _('Discovery worker usa StartDiscoverers como quantidade configurada, preserva o baseline padrao 5 e deve ser interpretado junto com discovery queue quando houver fila.'),
+            _('Preprocessing worker usa StartPreprocessors, preserva baseline minimo 16 ou numero de CPUs quando maior, e so recomenda reducao abaixo do configurado quando ainda fica acima desse baseline.'),
+            _('Config issues so alteram o score quando indicam pressao operacional acima dos thresholds; recomendacoes de diminuicao podem aparecer no resumo sem penalizar o score.')
         ]),
         $rules_section(_('Caches versus configuracao'), [
-            _('Caches sao avaliados por uso atual e media historica contra o threshold de caches.'),
+            _('Caches sao avaliados pelo uso P95 e pela media historica contra o threshold de caches.'),
             _('Quando o cache esta OK, nao ha recomendacao de ajuste; a coluna Recomendado permanece vazia.'),
             _('Quando o cache passa do threshold, o recomendado usa o item num.recomendado.* quando valido ou calcula localmente com carga desejada de 60%.'),
             _('Valores configurados como 8M, 16M ou 1G sao convertidos para bytes no backend e apresentados em unidade humana no frontend.'),
@@ -370,4 +427,7 @@ $page->addItem(
         ->addClass('proxy-health')
         ->setAttribute('data-proxy-health-payload', $data['payload'])
         ->setAttribute('data-proxy-health-async', '1')
-)->show();
+)
+    ->addItem((new CTag('script', true))->setAttribute('src', $asset_url('js/xlsx.full.min.js')))
+    ->addItem((new CTag('script', true))->setAttribute('src', $asset_url('js/proxy-health-page.js')))
+    ->show();
