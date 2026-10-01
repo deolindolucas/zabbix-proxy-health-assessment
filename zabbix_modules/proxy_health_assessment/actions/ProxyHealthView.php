@@ -281,6 +281,8 @@ class ProxyHealthView extends CController {
         return [
             'host_groupid' => $host_groupid,
             'host_group_name' => $this->hostGroupName($host_groupid),
+            'host_group_missing' => $host_groupid === '',
+            'host_group_default' => self::DEFAULT_HOST_GROUP,
             'proxy_templateid' => $proxy_templateid,
             'proxy_template_name' => $this->templateName($proxy_templateid),
             'proxy_template_filter' => $this->getInput('proxy_template_filter', 'Sim'),
@@ -600,18 +602,15 @@ class ProxyHealthView extends CController {
         $cache_config = [];
         $config_rows = [];
 
+        $proxy_lastaccess = $this->proxyLastAccessByName();
+
         foreach (($state['hosts'] ?? []) as $host) {
             $host_by_id[$host['hostid']] = $host;
             $host_items = $items_by_host[$host['hostid']] ?? [];
-            $lastaccess = self::num($host_items['zabbix[proxy,{HOST.HOST}, lastaccess]']['lastvalue'] ?? null);
-            $lastaccess_age = $lastaccess !== null ? max(0, $now - (int) $lastaccess) : null;
+            $offline = self::offlineExclusion($host, $host_items, $proxy_lastaccess, $settings, $now);
 
-            if ($lastaccess_age !== null && $lastaccess_age > $settings['lastaccess_max']) {
-                $excluded[] = [
-                    'host' => $host['name'] ?: $host['host'],
-                    'lastaccess_age' => $lastaccess_age,
-                    'reason' => _('Ultimo acesso acima do limite configurado')
-                ];
+            if ($offline !== null) {
+                $excluded[] = $offline;
                 continue;
             }
 
@@ -930,18 +929,15 @@ class ProxyHealthView extends CController {
         $cache_config = [];
         $config_rows = [];
 
+        $proxy_lastaccess = $this->proxyLastAccessByName();
+
         foreach ($hosts as $host) {
             $host_by_id[$host['hostid']] = $host;
             $host_items = $items_by_host[$host['hostid']] ?? [];
-            $lastaccess = self::num($host_items['zabbix[proxy,{HOST.HOST}, lastaccess]']['lastvalue'] ?? null);
-            $lastaccess_age = $lastaccess !== null ? max(0, $now - (int) $lastaccess) : null;
+            $offline = self::offlineExclusion($host, $host_items, $proxy_lastaccess, $settings, $now);
 
-            if ($lastaccess_age !== null && $lastaccess_age > $settings['lastaccess_max']) {
-                $excluded[] = [
-                    'host' => $host['name'] ?: $host['host'],
-                    'lastaccess_age' => $lastaccess_age,
-                    'reason' => _('Ultimo acesso acima do limite configurado')
-                ];
+            if ($offline !== null) {
+                $excluded[] = $offline;
                 continue;
             }
 
@@ -1590,6 +1586,74 @@ class ProxyHealthView extends CController {
             }
         }
         return false;
+    }
+
+    /**
+     * Ultimo contato de cada proxy pelo proxy.get, indexado pelo nome em minusculas.
+     * E a fonte principal da deteccao de offline: nao depende de item de template.
+     */
+    private function proxyLastAccessByName(): array {
+        try {
+            $proxies = API::Proxy()->get(['output' => ['proxyid', 'name', 'lastaccess']]);
+        }
+        catch (Throwable $exception) {
+            return [];
+        }
+
+        $by_name = [];
+        foreach (is_array($proxies) ? $proxies : [] as $proxy) {
+            $by_name[mb_strtolower($proxy['name'])] = (int) $proxy['lastaccess'];
+        }
+
+        return $by_name;
+    }
+
+    /**
+     * Retorna a linha de "fora do escopo" quando o proxy esta sem contato ha mais que lastaccess_max,
+     * ou null quando ele entra na avaliacao. O host do proxy e casado com o proxy pelo nome (host ou
+     * nome visivel, sem diferenciar maiusculas); sem correspondencia, usa o item interno de lastaccess.
+     */
+    private static function offlineExclusion(array $host, array $host_items, array $proxy_lastaccess,
+            array $settings, int $now): ?array {
+        if (($host['_assessment_role'] ?? 'proxy') === 'server') {
+            return null;
+        }
+
+        $lastaccess = null;
+        $source = 'item';
+        foreach ([$host['host'], $host['name'] ?? ''] as $name) {
+            $key = mb_strtolower((string) $name);
+            if ($key !== '' && array_key_exists($key, $proxy_lastaccess)) {
+                $lastaccess = $proxy_lastaccess[$key];
+                $source = 'proxy.get';
+                break;
+            }
+        }
+
+        if ($source === 'item') {
+            $lastaccess = self::num($host_items['zabbix[proxy,{HOST.HOST}, lastaccess]']['lastvalue'] ?? null);
+        }
+
+        $label = $host['name'] ?: $host['host'];
+
+        if ($source === 'proxy.get' && $lastaccess === 0) {
+            return [
+                'host' => $label,
+                'lastaccess_age' => null,
+                'reason' => _('Proxy sem nenhum contato registrado com o server')
+            ];
+        }
+
+        $lastaccess_age = $lastaccess !== null ? max(0, $now - (int) $lastaccess) : null;
+        if ($lastaccess_age !== null && $lastaccess_age > $settings['lastaccess_max']) {
+            return [
+                'host' => $label,
+                'lastaccess_age' => $lastaccess_age,
+                'reason' => _('Ultimo acesso acima do limite configurado')
+            ];
+        }
+
+        return null;
     }
 
     private function hostInterface(array $host): string {

@@ -944,6 +944,34 @@ html[color-scheme="dark"] .proxy-health {
     border-left: 4px solid var(--ph-risk);
 }
 
+.proxy-health-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--ph-warn);
+    border-radius: 6px;
+    background: rgba(211, 155, 32, .1);
+}
+
+.proxy-health-notice-action {
+    min-height: 30px;
+    padding: 4px 10px;
+    border: 1px solid var(--ph-border);
+    border-radius: 4px;
+    background: transparent;
+    color: currentColor;
+    cursor: pointer;
+}
+
+/* O tema do Zabbix 8.0 aplica `aside { grid-area: sidebar }`; nenhum painel do modulo deve herdar isso. */
+.proxy-health aside {
+    grid-area: auto;
+}
+
 .proxy-health-empty {
     padding: 18px;
     border: 1px dashed var(--ph-border);
