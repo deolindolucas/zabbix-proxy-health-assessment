@@ -1,5 +1,9 @@
 # Changelog — Proxy Health Assessment
 
+## 4.3.2
+- Enquanto a coleta assíncrona roda, a tabela não diz mais "Nenhum proxy encontrado" e a legenda mostra "—" no lugar de zeros. Se a coleta falhar, a mensagem aponta para o erro.
+- Removido o caminho síncrono de coleta (`collect()`/`collectTrends()`, cerca de 220 linhas), que não era mais chamado: a tela usa só o fluxo assíncrono (init → trend → finalize).
+
 ## 4.3.1
 - Notas e descontos em pt-BR ("62,1", "−7,8"), como as colunas de métricas.
 - Validado num frontend Zabbix 7.0.30 com dados de produção e publicado em produção.
@@ -25,8 +29,6 @@
 - Regras de carga usam o P95 dos picos horários de trends no lugar do valor do momento, com desconto proporcional entre o limite de atenção e o crítico.
 
 ## Próximos passos
-- Esconder "Nenhum proxy encontrado" enquanto a coleta assíncrona ainda está rodando.
 - Tendência (diferença semanal, regressão nas médias diárias ou `forecast()`/`timeleft()`) e estado "Atenção preditiva".
-- Remover o caminho síncrono de coleta (`collect()`/`collectTrends()`), que não é mais usado.
 - Abrir o PR desta branch para a `main`.
 - Validar o tema claro e a exportação XLSX/CSV com muitos proxies.
