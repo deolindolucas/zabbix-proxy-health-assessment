@@ -127,8 +127,10 @@
             document.addEventListener('click', (event) => this.onDocumentClick(event));
             this.search?.addEventListener('input', () => this.render());
 
+            // Enquanto a coleta assincrona roda, a tabela fica vazia sem dizer "nenhum proxy".
+            this.collecting = root.dataset.proxyHealthAsync === '1';
             this.render();
-            if (root.dataset.proxyHealthAsync === '1') {
+            if (this.collecting) {
                 this.loadAssessment();
             }
         }
@@ -250,12 +252,16 @@
                     proxy_trends: JSON.stringify(trendStats)
                 });
                 this.setLoading('Renderizando painel', 100);
+                this.collecting = false;
                 this.render();
                 window.setTimeout(() => this.loading?.panel.remove(), 450);
             }
             catch (error) {
                 this.setLoading(`Falha na coleta: ${error.message}`, 100);
                 this.loading?.panel.classList.add('is-error');
+                this.collecting = false;
+                this.collectFailed = true;
+                this.render();
             }
         }
 
@@ -412,7 +418,7 @@
             Object.entries(counts).forEach(([key, value]) => {
                 const target = this.root.querySelector(`[data-proxy-kpi="${key}"]`);
                 if (target) {
-                    target.textContent = String(value);
+                    target.textContent = this.collecting || this.collectFailed ? '—' : String(value);
                 }
             });
             this.root.querySelectorAll('[data-proxy-kpi-filter]').forEach((card) => {
@@ -558,10 +564,16 @@
                 this.cards.append(notice);
             }
 
+            if (this.collecting) {
+                return;
+            }
+
             if (proxies.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'proxy-health-empty';
-                empty.textContent = 'Nenhum proxy encontrado para o filtro atual.';
+                empty.textContent = this.collectFailed
+                    ? 'A coleta nao foi concluida; veja o erro acima.'
+                    : 'Nenhum proxy encontrado para o filtro atual.';
                 this.cards.append(empty);
                 return;
             }
