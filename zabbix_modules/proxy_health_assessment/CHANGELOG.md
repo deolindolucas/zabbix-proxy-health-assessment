@@ -1,5 +1,8 @@
 # Changelog — Proxy Health Assessment
 
+## 4.5.1
+- A aba Regras de negócio usa a largura toda da tela: os blocos visuais ocupam a largura inteira e as seções de texto completo ficam lado a lado em colunas.
+
 ## 4.5.0
 - **Aba Configuração no formulário nativo do Zabbix** (`CFormList`, `CTabView`, `makeFormFooter`, iguais no 7.0 e no 8.0, então seguem o tema do usuário):
   - seções Escopo da coleta / Limites do score / Regras opcionais;

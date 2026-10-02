@@ -434,7 +434,19 @@ html[color-scheme="dark"] .proxy-health {
 .proxy-health-rules {
     display: grid;
     gap: 12px;
-    max-width: 980px;
+}
+
+/* Textos completos em colunas de leitura (estilo revista): usa a largura da tela, sem linhas
+   longas demais e sem buracos entre secoes de alturas diferentes. */
+.proxy-health-rules:not(.proxy-health-rules-visual) {
+    display: block;
+    columns: 460px auto;
+    column-gap: 12px;
+}
+
+.proxy-health-rules:not(.proxy-health-rules-visual) > .proxy-health-rule-section {
+    break-inside: avoid;
+    margin-bottom: 12px;
 }
 
 .proxy-health-rule-section {
