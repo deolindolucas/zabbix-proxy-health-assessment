@@ -1,5 +1,15 @@
 # Changelog — Proxy Health Assessment
 
+## 4.5.0
+- **Aba Configuração no formulário nativo do Zabbix** (`CFormList`, `CTabView`, `makeFormFooter`, iguais no 7.0 e no 8.0, então seguem o tema do usuário):
+  - seções Escopo da coleta / Limites do score / Regras opcionais;
+  - botões Aplicar e Restaurar padrões.
+- **Limites do score em tabela:** uma linha por métrica com atenção, crítico, unidade e desconto máximo, no lugar de 20 campos soltos.
+- **Versão mínima em dois campos:** versão major e patch. Sem valor informado, o major vem da versão do próprio frontend. O patch padrão continua 20 no 7.0 (comportamento anterior) e é 0 nas outras versões. O formato antigo `version_cut=7.0.20` continua aceito.
+- **Tempos com sufixo do Zabbix:** "Fora do escopo após" (`15m`, `1h`) e "Janela de trends" (`30d`). Números no formato antigo (segundos e dias) continuam aceitos.
+- **Regras opcionais no padrão "checkbox + campos":** os thresholds de pollers e caches só ficam editáveis com a regra ligada.
+- **Aba Regras de negócio:** um resumo visual no topo (escala da nota, tabela das regras que descontam pontos com os limites atuais da configuração, fluxo da coleta em 5 passos), seguido dos textos completos de sempre, sem cortes.
+
 ## 4.4.0
 - **Fallback do host group:** o padrão continua `Zabbix/Proxies`. Se ele não existir, o campo fica vazio e a tela pede para o usuário escolher o grupo de proxies; o botão do aviso leva direto ao campo, destacado. A escolha fica salva no perfil do usuário e é usada nas próximas visitas, com "(sua escolha salva)" no cabeçalho. Um grupo informado ou salvo que deixe de existir é descartado.
 - **Tema claro:** os textos coloridos (estado, links, problemas esmaecidos) têm cores próprias por tema, separadas das cores das barras, todas com contraste ≥ 4,5:1 nos temas claro e escuro do Zabbix 7.0 e 8.0.

@@ -123,6 +123,7 @@
             this.detailTabs = {};
 
             root.addEventListener('click', (event) => this.onClick(event));
+            root.querySelector('#consider_config')?.addEventListener('change', () => this.syncOptionalFields());
             root.addEventListener('keydown', (event) => this.onKeyDown(event));
             document.addEventListener('click', (event) => this.onDocumentClick(event));
             this.search?.addEventListener('input', () => this.render());
@@ -338,14 +339,22 @@
 
         // Leva o usuario ao campo da configuracao (ex.: host group vazio quando o padrao nao existe).
         focusConfigField(name) {
-            const field = this.root.querySelector(`[data-proxy-pane="config"] #${name}`)?.closest('.proxy-health-config-field');
-            if (!field) {
+            const row = this.root.querySelector(`[data-proxy-pane="config"] #proxy-health-field-${name.replace(/_/g, '-').replace('-groupid', '-group')}`);
+            if (!row) {
                 return;
             }
-            field.classList.add('is-highlighted');
-            field.scrollIntoView({block: 'center'});
-            field.querySelector('input:not([type="hidden"]), button')?.focus();
-            window.setTimeout(() => field.classList.remove('is-highlighted'), 2500);
+            row.classList.add('is-highlighted');
+            row.scrollIntoView({block: 'center'});
+            row.querySelector(`#${name}_ms, input:not([type="hidden"])`)?.focus();
+            window.setTimeout(() => row.classList.remove('is-highlighted'), 2500);
+        }
+
+        // Regra opcional "configuracao do proxy": os thresholds so ficam editaveis com a regra ligada.
+        syncOptionalFields() {
+            const toggle = this.root.querySelector('#consider_config');
+            this.root.querySelectorAll('#poller_threshold, #cache_threshold').forEach((input) => {
+                input.disabled = !toggle?.checked;
+            });
         }
 
         toggleExportMenu() {

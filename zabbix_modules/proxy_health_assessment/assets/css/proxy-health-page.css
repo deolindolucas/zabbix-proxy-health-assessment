@@ -401,6 +401,7 @@ html[color-scheme="dark"] .proxy-health {
     background: rgba(211, 155, 32, .1);
 }
 
+#proxy-health-field-host-group.is-highlighted,
 .proxy-health-config-field.is-highlighted {
     outline: 2px solid var(--ph-warn);
     outline-offset: 4px;
@@ -1013,4 +1014,183 @@ html[color-scheme="dark"] .proxy-health {
     .proxy-health-search input[type="search"] {
         width: 100%;
     }
+}
+
+/* ---- Configuracao no formulario nativo do Zabbix (CFormList) ---- */
+.proxy-health-limits {
+    width: auto;
+    border-collapse: collapse;
+}
+
+.proxy-health-limits th {
+    padding: 0 16px 6px 0;
+    font-weight: normal;
+    text-align: left;
+    white-space: nowrap;
+    opacity: .75;
+}
+
+.proxy-health-limits td {
+    padding: 2px 16px 2px 0;
+    white-space: nowrap;
+}
+
+.proxy-health-limits + .grey {
+    display: block;
+    margin-top: 6px;
+}
+
+/* ---- Regras de negocio: resumo visual acima dos textos completos ---- */
+.proxy-health-rules-visual {
+    margin-bottom: 4px;
+}
+
+.proxy-health-rules-subtitle {
+    margin: 8px 0 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    opacity: .75;
+}
+
+.proxy-health-scale-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+}
+
+.proxy-health-scale {
+    display: flex;
+    height: 28px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.proxy-health-scale-band {
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.proxy-health-scale-band + .proxy-health-scale-band {
+    border-left: 1px solid var(--ph-border);
+}
+
+.proxy-health-scale-band.is-critical { background: rgba(214, 93, 74, .32); }
+.proxy-health-scale-band.is-risk { background: rgba(214, 93, 74, .18); }
+.proxy-health-scale-band.is-attention { background: rgba(211, 155, 32, .28); }
+.proxy-health-scale-band.is-ok { background: rgba(38, 150, 111, .35); }
+
+.proxy-health-scale-ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 11px;
+    opacity: .75;
+}
+
+.proxy-health-scale-text {
+    display: grid;
+    gap: 6px;
+    line-height: 1.5;
+}
+
+.proxy-health-rules-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.proxy-health-rules-table th {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--ph-border);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-align: left;
+    text-transform: uppercase;
+    opacity: .75;
+}
+
+.proxy-health-rules-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--ph-border);
+    vertical-align: top;
+}
+
+.proxy-health-rules-table .is-right {
+    text-align: right;
+}
+
+.proxy-health-rule-tag {
+    display: inline-block;
+    margin-right: 4px;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.proxy-health-rule-tag.is-binary {
+    background: rgba(211, 155, 32, .16);
+    color: var(--ph-warn-text);
+}
+
+.proxy-health-rule-tag.is-proportional {
+    background: rgba(38, 150, 111, .16);
+    color: var(--ph-good-text);
+}
+
+.proxy-health-rule-tag.is-optional {
+    background: var(--ph-chip);
+}
+
+.proxy-health-rules-note {
+    margin-top: 8px;
+}
+
+.proxy-health-flow {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.proxy-health-flow-step {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--ph-border);
+    border-radius: 4px;
+    background: var(--ph-panel);
+    line-height: 1.4;
+}
+
+.proxy-health-flow-arrow {
+    align-self: center;
+    opacity: .6;
+}
+
+@media (max-width: 900px) {
+    .proxy-health-scale-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .proxy-health-flow {
+        flex-direction: column;
+    }
+
+    .proxy-health-flow-arrow {
+        transform: rotate(90deg);
+    }
+}
+
+/* Opcoes logo abaixo de um campo (ex.: checkboxes do template), uma por linha. */
+#proxy-health-config-form .table-forms-td-right > .form-input-margin {
+    display: block;
+    margin-top: 4px;
 }

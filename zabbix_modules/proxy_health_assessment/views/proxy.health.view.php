@@ -30,139 +30,29 @@ $asset_url = static function(string $relative) use ($asset_base, $asset_path): s
 $this
     ->addCssFile($asset_url('css/proxy-health-page.css'));
 
-$field = static function($label, $control, string $help = ''): CDiv {
-    $label_items = [$label];
-    if ($help !== '') {
-        $label_items[] = (new CSpan('?'))
-            ->addClass('proxy-health-help')
-            ->setAttribute('title', $help)
-            ->setAttribute('aria-label', $help);
-    }
-
-    return (new CDiv([
-        (new CDiv($label_items))->addClass('proxy-health-config-label'),
-        $control
-    ]))->addClass('proxy-health-config-field');
+$multiselect = static function(string $name, string $object_name, string $id, string $label, array $popup): CMultiSelect {
+    return (new CMultiSelect([
+        'name' => $name,
+        'object_name' => $object_name,
+        'data' => $id !== '' ? [['id' => $id, 'name' => $label]] : [],
+        'multiple' => false,
+        'popup' => ['parameters' => $popup + ['dstfrm' => 'proxy_health_config_form', 'dstfld1' => $name]]
+    ]))->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH);
 };
 
-$input = static function(string $label, string $name, $value, string $type = 'text', array $attributes = [], string $help = '') use ($field): CDiv {
-    $control = (new CTextBox($name, (string) $value))
-        ->setId('proxy-health-'.$name)
-        ->setAttribute('type', $type);
+$hint = static fn(string $text): CSpan => (new CSpan($text))->addClass(ZBX_STYLE_GREY);
 
-    foreach ($attributes as $attribute => $attribute_value) {
-        $control->setAttribute($attribute, (string) $attribute_value);
-    }
+$checkbox = static fn(string $name, string $value, string $label): CCheckBox => (new CCheckBox($name, 'Sim'))
+    ->setId($name)
+    ->setChecked($value === 'Sim')
+    ->setUncheckedValue('Nao')
+    ->setLabel($label);
 
-    return $field(
-        (new CLabel($label, 'proxy-health-'.$name)),
-        $control,
-        $help
-    );
-};
+$number = static fn(string $name, $value, int $width = ZBX_TEXTAREA_TINY_WIDTH): CTextBox => (new CTextBox($name, (string) $value))
+    ->setId($name)
+    ->setWidth($width);
 
-$checkbox = static function(string $label, string $name, string $value, string $help = '') use ($field): CDiv {
-    return $field(
-        (new CLabel($label, 'proxy-health-'.$name)),
-        (new CCheckBox($name, 'Sim'))
-            ->setId('proxy-health-'.$name)
-            ->setChecked($value === 'Sim')
-            ->setUncheckedValue('Nao'),
-        $help
-    );
-};
-
-$host_group_select = static function(array $settings) use ($field): CDiv {
-    $selected = $settings['host_groupid'] !== ''
-        ? [['id' => $settings['host_groupid'], 'name' => $settings['host_group_name']]]
-        : [];
-
-    return $field(
-        (new CLabel([_('Host group'), (new CSpan('*'))->addClass('proxy-health-required')], 'host_groupid')),
-        (new CMultiSelect([
-            'name' => 'host_groupid',
-            'object_name' => 'hostGroup',
-            'data' => $selected,
-            'multiple' => false,
-            'popup' => [
-                'parameters' => [
-                    'srctbl' => 'host_groups',
-                    'srcfld1' => 'groupid',
-                    'dstfrm' => 'proxy_health_config_form',
-                    'dstfld1' => 'host_groupid',
-                    'normal_only' => '1'
-                ]
-            ]
-        ]))
-            ->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH),
-        _('Grupo de hosts que define o escopo principal do assessment. E obrigatorio para coletar proxies.')
-    );
-};
-
-$proxy_template_select = static function(array $settings) use ($field): CDiv {
-    $selected = $settings['proxy_templateid'] !== ''
-        ? [['id' => $settings['proxy_templateid'], 'name' => $settings['proxy_template_name']]]
-        : [];
-
-    return $field(
-        (new CLabel(_('Template de proxy'), 'proxy_templateid')),
-        (new CMultiSelect([
-            'name' => 'proxy_templateid',
-            'object_name' => 'templates',
-            'data' => $selected,
-            'multiple' => false,
-            'popup' => [
-                'parameters' => [
-                    'srctbl' => 'templates',
-                    'srcfld1' => 'hostid',
-                    'dstfrm' => 'proxy_health_config_form',
-                    'dstfld1' => 'proxy_templateid'
-                ]
-            ]
-        ]))
-            ->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH),
-        _('Template opcional usado para refinar o Host Group e remover hosts que nao fazem parte do assessment.')
-    );
-};
-
-$zabbix_server_host_select = static function(array $settings) use ($field): CDiv {
-    $selected = $settings['zabbix_server_hostid'] !== ''
-        ? [['id' => $settings['zabbix_server_hostid'], 'name' => $settings['zabbix_server_host_name']]]
-        : [];
-
-    return $field(
-        (new CLabel(_('Zabbix Server'), 'zabbix_server_hostid')),
-        (new CMultiSelect([
-            'name' => 'zabbix_server_hostid',
-            'object_name' => 'hosts',
-            'data' => $selected,
-            'multiple' => false,
-            'popup' => [
-                'parameters' => [
-                    'srctbl' => 'hosts',
-                    'srcfld1' => 'hostid',
-                    'dstfrm' => 'proxy_health_config_form',
-                    'dstfld1' => 'zabbix_server_hostid',
-                    'real_hosts' => '1'
-                ]
-            ]
-        ]))
-            ->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH),
-        _('Host opcional do Zabbix Server. Quando selecionado, entra em primeiro lugar no assessment.')
-    );
-};
-
-$block = static function(string $title, array $fields, $toggle = null): CDiv {
-    if ($toggle !== null) {
-        array_unshift($fields, $toggle);
-    }
-
-    return (new CDiv([
-        (new CTag('h3', true, $title))->addClass('proxy-health-form-title'),
-        (new CDiv($fields))->addClass('proxy-health-config-list')
-    ]))
-        ->addClass('proxy-health-config-block');
-};
+$section = static fn(string $title): CTag => (new CTag('h4', true, $title))->addClass('input-section-header');
 
 $rules_section = static function(string $title, array $items): CDiv {
     return (new CDiv([
@@ -174,53 +64,148 @@ $rules_section = static function(string $title, array $items): CDiv {
     ]))->addClass('proxy-health-rule-section');
 };
 
+// Limites do score: uma linha por metrica (atencao, critico, unidade, desconto maximo).
+$limit_rows = [
+    [_('CPU P95'), 'cpu_p95_max', 'cpu_p95_crit', '%', 10],
+    [_('CPU media'), 'cpu_avg_max', 'cpu_avg_crit', '%', 10],
+    [_('Memoria P95'), 'memory_p95_max', 'memory_p95_crit', '%', 10],
+    [_('Memoria media'), 'memory_avg_max', 'memory_avg_crit', '%', 10],
+    [_('Disco P95'), 'disk_p95_max', 'disk_p95_crit', '%', 10],
+    [_('Disco media'), 'disk_avg_max', 'disk_avg_crit', '%', 10],
+    [_('VPS P95'), 'vps_max', 'vps_crit', _('vps'), 10],
+    [_('Fila > 10 min (P95)'), 'queue_10m_max', 'queue_10m_crit', _('itens'), 10],
+    [_('Fila de preprocessing (P95)'), 'preproc_queue_max', 'preproc_queue_crit', _('itens'), 10],
+    [_('Itens unsupported'), 'unsupported_max', 'unsupported_crit', '%', 15]
+];
+$setting_value = static fn(string $name) => match ($name) {
+    'unsupported_max' => $settings['unsupported_max_percent'],
+    'unsupported_crit' => $settings['unsupported_crit_percent'],
+    default => $settings[$name]
+};
+$limits = (new CTable())
+    ->addClass('proxy-health-limits')
+    ->setHeader([_('Metrica'), _('Atencao a partir de'), _('Critico em'), _('Desconto max.')]);
+foreach ($limit_rows as [$label, $warn, $crit, $unit, $points]) {
+    $limits->addRow([
+        $label,
+        [$number($warn, $setting_value($warn)), ' ', $hint($unit)],
+        [$number($crit, $setting_value($crit)), ' ', $hint($unit)],
+        $hint(sprintf(_('%1$s pts'), $points))
+    ]);
+}
+
+$frontend_version = $settings['frontend_version'] !== '' ? $settings['frontend_version'] : '?';
+$version_hint = $settings['version_cut_source'] === 'frontend'
+    ? sprintf(_('versao deste frontend: %1$s'), $frontend_version)
+    : sprintf(_('frontend: %1$s'), $frontend_version);
+
+$form_list = (new CFormList('proxy_health_config_list'))
+    ->addRow($section(_('Escopo da coleta')))
+    ->addRow(
+        (new CLabel(_('Host group'), 'host_groupid_ms'))->setAsteriskMark(),
+        [
+            $multiselect('host_groupid', 'hostGroup', $settings['host_groupid'], $settings['host_group_name'], [
+                'srctbl' => 'host_groups', 'srcfld1' => 'groupid', 'normal_only' => '1'
+            ]),
+            ' ',
+            $hint(($settings['host_group_source'] ?? '') === 'profile'
+                ? sprintf(_('Sua escolha salva · padrao: %1$s'), $settings['host_group_default'])
+                : sprintf(_('Padrao: %1$s; a escolha fica salva para as proximas visitas'), $settings['host_group_default'])
+            )
+        ],
+        'proxy-health-field-host-group'
+    )
+    ->addRow(
+        new CLabel(_('Template de proxy'), 'proxy_templateid_ms'),
+        [
+            $multiselect('proxy_templateid', 'templates', $settings['proxy_templateid'], $settings['proxy_template_name'], [
+                'srctbl' => 'templates', 'srcfld1' => 'hostid'
+            ]),
+            (new CDiv($checkbox('proxy_template_filter', $settings['proxy_template_filter'],
+                _('Usar o template para filtrar os hosts do grupo')
+            )))->addClass(ZBX_STYLE_FORM_INPUT_MARGIN),
+            (new CDiv($checkbox('proxy_template_indirect', $settings['proxy_template_indirect'],
+                _('Incluir hosts com o template herdado por outro template')
+            )))->addClass(ZBX_STYLE_FORM_INPUT_MARGIN)
+        ]
+    )
+    ->addRow(
+        new CLabel(_('Zabbix server'), 'zabbix_server_hostid_ms'),
+        [
+            $multiselect('zabbix_server_hostid', 'hosts', $settings['zabbix_server_hostid'],
+                $settings['zabbix_server_host_name'], ['srctbl' => 'hosts', 'srcfld1' => 'hostid', 'real_hosts' => '1']
+            ),
+            ' ',
+            $hint(_('Opcional; entra em primeiro lugar no assessment'))
+        ]
+    )
+    ->addRow(
+        (new CLabel(_('Versao minima'), 'version_cut'))->setAsteriskMark(),
+        [
+            $number('version_cut', $settings['version_cut']),
+            ' ', $hint(_('patch')), ' ',
+            $number('patch_min', $settings['patch_min']),
+            ' ',
+            $hint(sprintf(_('abaixo de %1$s.%2$s desconta 15 pontos · %3$s'),
+                $settings['version_cut'], $settings['patch_min'], $version_hint
+            ))
+        ]
+    )
+    ->addRow(
+        (new CLabel(_('Fora do escopo apos'), 'lastaccess_max'))->setAsteriskMark(),
+        [
+            $number('lastaccess_max', $settings['lastaccess_max_label']),
+            ' ',
+            $hint(_('sem contato com o server; aceita sufixos de tempo (s, m, h, d)'))
+        ]
+    )
+    ->addRow(
+        (new CLabel(_('Janela de trends'), 'trend_days'))->setAsteriskMark(),
+        [$number('trend_days', $settings['trend_days'].'d'), ' ', $hint(_('de 7d a 30d'))]
+    )
+    ->addRow($section(_('Limites do score')))
+    ->addRow(
+        _('Metricas'),
+        [
+            $limits,
+            $hint(_('Abaixo de "atencao" nao desconta; entre os dois o desconto e proporcional; a partir de "critico" desconta o maximo.'))
+        ]
+    )
+    ->addRow($section(_('Regras opcionais')))
+    ->addRow(_('Problemas orfaos'), $checkbox('consider_orphans', $settings['consider_orphans'],
+        _('Contar no score problemas sem trigger ou item valido')
+    ))
+    ->addRow(_('Configuracao do proxy'), [
+        $checkbox('consider_config', $settings['consider_config'], _('Contar no score')),
+        (new CSpan([
+            ' ', $hint(_('pollers acima de')), ' ',
+            $number('poller_threshold', $settings['poller_threshold'], ZBX_TEXTAREA_TINY_WIDTH)
+                ->setEnabled($settings['consider_config'] === 'Sim'),
+            ' ', $hint('%'), ' ', $hint(_('caches acima de')), ' ',
+            $number('cache_threshold', $settings['cache_threshold'], ZBX_TEXTAREA_TINY_WIDTH)
+                ->setEnabled($settings['consider_config'] === 'Sim'),
+            ' ', $hint('%')
+        ]))->addClass('proxy-health-inline-fields')
+    ])
+    ->addRow(_('Recomendacoes'), $checkbox('show_process_recommendations', $settings['show_process_recommendations'],
+        _('Mostrar ajustes de processos no resumo (sem alterar o score)')
+    ));
+
 $config_form = (new CForm('get'))
     ->setName('proxy_health_config_form')
     ->setId('proxy-health-config-form')
-    ->addClass('proxy-health-config-form')
     ->addVar('action', $data['action'])
-    ->addItem([
-        $block(_('Coleta'), [
-            $host_group_select($settings),
-            $checkbox(_('Filtrar hosts pelo template de proxy'), 'proxy_template_filter', $settings['proxy_template_filter'], _('Quando habilitado, o template selecionado tambem limita quais hosts do grupo entram no assessment.')),
-            $proxy_template_select($settings),
-            $checkbox(_('Incluir hosts com template herdado por outro template'), 'proxy_template_indirect', $settings['proxy_template_indirect'], _('Inclui hosts que nao possuem o template selecionado diretamente, mas usam um template filho que herda/linka esse template.')),
-            $zabbix_server_host_select($settings),
-            $input(_('Versao de corte'), 'version_cut', $settings['version_cut'], 'text', [], _('Versao minima esperada para o proxy ou server. Versoes abaixo entram como achado.')),
-            $input(_('Patch minimo'), 'patch_min', $settings['patch_min'], 'number', [], _('Patch minimo aceito dentro da versao de corte informada.')),
-            $input(_('Ultimo acesso maximo (s)'), 'lastaccess_max', $settings['lastaccess_max'], 'number', [], _('Idade maxima, em segundos, do ultimo acesso do proxy antes de sair do escopo.'))
-        ]),
-        $block(_('Thresholds principais do score'), [
-            $input(_('Dias de trends'), 'trend_days', $settings['trend_days'], 'number', ['min' => 7, 'max' => 30, 'step' => 1], _('Janela usada para medias historicas. Minimo 7 dias e maximo 30 dias.')),
-            $input(_('Unsupported maximo (%)'), 'unsupported_max', $settings['unsupported_max_percent'], 'number', ['min' => 0, 'step' => 1], _('Percentual maximo de itens unsupported no escopo do proxy.')),
-            $input(_('Unsupported critico (%)'), 'unsupported_crit', $settings['unsupported_crit_percent'], 'number', ['min' => 0, 'step' => 1], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('VPS P95 maximo'), 'vps_max', $settings['vps_max'], 'number', [], _('P95 dos maximos horarios de valores por segundo acima deste limite reduz score.')),
-            $input(_('VPS P95 critico'), 'vps_crit', $settings['vps_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('CPU P95 maxima'), 'cpu_p95_max', $settings['cpu_p95_max'], 'number', [], _('P95 dos maximos horarios de CPU na janela de trends.')),
-            $input(_('CPU P95 critica'), 'cpu_p95_crit', $settings['cpu_p95_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('CPU media maxima'), 'cpu_avg_max', $settings['cpu_avg_max'], 'number', [], _('Media historica de CPU maxima aceita na janela de trends.')),
-            $input(_('CPU media critica'), 'cpu_avg_crit', $settings['cpu_avg_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('Memoria P95 maxima'), 'memory_p95_max', $settings['memory_p95_max'], 'number', [], _('P95 dos maximos horarios de memoria na janela de trends.')),
-            $input(_('Memoria P95 critica'), 'memory_p95_crit', $settings['memory_p95_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('Memoria media maxima'), 'memory_avg_max', $settings['memory_avg_max'], 'number', [], _('Media historica de memoria maxima aceita na janela de trends.')),
-            $input(_('Memoria media critica'), 'memory_avg_crit', $settings['memory_avg_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('Disco P95 maximo'), 'disk_p95_max', $settings['disk_p95_max'], 'number', [], _('P95 dos maximos horarios de disco na janela de trends.')),
-            $input(_('Disco P95 critico'), 'disk_p95_crit', $settings['disk_p95_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('Disco media maxima'), 'disk_avg_max', $settings['disk_avg_max'], 'number', [], _('Media historica de disco maxima aceita na janela de trends.')),
-            $input(_('Disco media critica'), 'disk_avg_crit', $settings['disk_avg_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('Fila 10m P95 maxima'), 'queue_10m_max', $settings['queue_10m_max'], 'number', [], _('P95 dos maximos horarios da fila de itens acima de 10 minutos.')),
-            $input(_('Fila 10m P95 critica'), 'queue_10m_crit', $settings['queue_10m_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.')),
-            $input(_('Preproc queue P95 maxima'), 'preproc_queue_max', $settings['preproc_queue_max'], 'number', [], _('P95 dos maximos horarios da fila de preprocessing.')),
-            $input(_('Preproc queue P95 critica'), 'preproc_queue_crit', $settings['preproc_queue_crit'], 'number', [], _('Valor em que o desconto atinge o maximo da regra. Entre o limite e este valor o desconto e proporcional.'))
-        ]),
-        $block(_('Problemas orfaos'), [], $checkbox(_('Usar este bloco no assessment'), 'consider_orphans', $settings['consider_orphans'], _('Quando habilitado, problemas ativos sem trigger/item valido tambem podem afetar o score.'))),
-        $block(_('Configuracao do proxy no score'), [
-            $input(_('Threshold pollers'), 'poller_threshold', $settings['poller_threshold'], 'number', [], _('Busy P95 ou media historica acima deste percentual gera avaliacao de ajuste.')),
-            $input(_('Threshold caches'), 'cache_threshold', $settings['cache_threshold'], 'number', [], _('Uso P95 ou media historica de cache acima deste percentual gera avaliacao de ajuste.'))
-        ], $checkbox(_('Usar este bloco no assessment'), 'consider_config', $settings['consider_config'], _('Quando habilitado, problemas de processos/caches versus configuracao entram no score.'))),
-        $block(_('Recomendacoes Process vs Config no resumo'), [], $checkbox(_('Mostrar no resumo sem alterar o score'), 'show_process_recommendations', $settings['show_process_recommendations'], _('Exibe recomendacoes operacionais no resumo visual sem penalizar o score.'))),
-        (new CSubmit('apply', _('Aplicar')))->addClass(ZBX_STYLE_BTN_ALT)
-    ]);
+    ->addItem(
+        (new CTabView())
+            ->addTab('proxy_health_config', null, $form_list)
+            ->setFooter(makeFormFooter(
+                new CSubmit('apply', _('Aplicar')),
+                [new CRedirectButton(_('Restaurar padroes'), (new CUrl('zabbix.php'))
+                    ->setArgument('action', $data['action'])
+                    ->getUrl()
+                )]
+            ))
+    );
 
 $tabs = (new CDiv([
     (new CTag('button', true, _('Overview')))
@@ -342,12 +327,123 @@ $config = (new CDiv([
     $config_form
 ]))->addClass('proxy-health-pane')->setAttribute('data-proxy-pane', 'config');
 
+// Resumo visual das regras (escala, descontos com os limites atuais, fluxo). Os textos completos seguem abaixo.
+$fmt_limit = static fn($warn, $crit, string $unit = ''): string => sprintf('%1$s%3$s → %2$s%3$s',
+    rtrim(rtrim(number_format((float) $warn, 2, ',', ''), '0'), ','),
+    rtrim(rtrim(number_format((float) $crit, 2, ',', ''), '0'), ','),
+    $unit
+);
+$rule_tag = static fn(string $type): CSpan => (new CSpan(match ($type) {
+    'binary' => _('binaria'),
+    'proportional' => _('proporcional'),
+    default => _('opcional')
+}))->addClass('proxy-health-rule-tag is-'.$type);
+
+$score_rules = [
+    [_('Alerta Disaster ativo'), _('problema atual'), ['binary'], '—', '50'],
+    [_('Alerta de saude do proxy ativo'), _('problema atual'), ['binary'], '—', '20'],
+    [_('Versao abaixo do corte'), _('valor atual'), ['binary'],
+        sprintf('< %1$s.%2$s', $settings['version_cut'], $settings['patch_min']), '15'],
+    [_('Itens unsupported'), _('valor atual'), ['proportional'],
+        $fmt_limit($settings['unsupported_max_percent'], $settings['unsupported_crit_percent'], '%'), '15'],
+    [_('CPU P95 · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+        $fmt_limit($settings['cpu_p95_max'], $settings['cpu_p95_crit'], '%').' · '
+            .$fmt_limit($settings['cpu_avg_max'], $settings['cpu_avg_crit'], '%'), '10 + 10'],
+    [_('Memoria P95 · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+        $fmt_limit($settings['memory_p95_max'], $settings['memory_p95_crit'], '%').' · '
+            .$fmt_limit($settings['memory_avg_max'], $settings['memory_avg_crit'], '%'), '10 + 10'],
+    [_('Disco P95 · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+        $fmt_limit($settings['disk_p95_max'], $settings['disk_p95_crit'], '%').' · '
+            .$fmt_limit($settings['disk_avg_max'], $settings['disk_avg_crit'], '%'), '10 + 10'],
+    [_('VPS P95'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+        $fmt_limit($settings['vps_max'], $settings['vps_crit']), '10'],
+    [_('Fila > 10 min · preprocessing (P95)'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+        $fmt_limit($settings['queue_10m_max'], $settings['queue_10m_crit']).' · '
+            .$fmt_limit($settings['preproc_queue_max'], $settings['preproc_queue_crit']), '10 + 10'],
+    [_('Problemas orfaos (Disaster · relevante)'), _('problema atual'), ['optional', 'binary'],
+        $settings['consider_orphans'] === 'Sim' ? _('ligado') : _('desligado'), '50 · 20'],
+    [_('Processos e caches acima do threshold'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['optional', 'binary'],
+        ($settings['consider_config'] === 'Sim' ? _('ligado') : _('desligado'))
+            .sprintf(' (%1$s%% · %2$s%%)', $settings['poller_threshold'], $settings['cache_threshold']), '15']
+];
+$score_table = (new CTable())
+    ->addClass('proxy-health-rules-table')
+    ->setHeader([_('Regra'), _('Leitura'), _('Tipo'), _('Limites atuais'),
+        (new CColHeader(_('Desconto max.')))->addClass('is-right')
+    ]);
+foreach ($score_rules as [$name, $reading, $types, $limit, $points]) {
+    $score_table->addRow([
+        $name,
+        (new CSpan($reading))->addClass('proxy-health-muted'),
+        array_map($rule_tag, $types),
+        (new CSpan($limit))->addClass('proxy-health-num'),
+        (new CCol((new CSpan($points))->addClass('proxy-health-num')))->addClass('is-right')
+    ]);
+}
+
+$scale_band = static fn(string $label, int $width, string $class): CDiv => (new CDiv($label))
+    ->addClass('proxy-health-scale-band '.$class)
+    ->addStyle('width: '.$width.'%;');
+
+$flow_steps = [
+    [_('1. Escopo'), sprintf(_('Host group (padrao %1$s ou a escolha salva) e Zabbix server opcional.'), $settings['host_group_default'])],
+    [_('2. Filtro'), _('Template de proxy opcional, com herdados; hosts desabilitados saem.')],
+    [_('3. Fora do escopo'), sprintf(_('Proxy sem contato ha mais de %1$s (proxy.get) ou que nunca conectou.'), $settings['lastaccess_max_label'])],
+    [_('4. Leituras'), sprintf(_('Itens internos, CPU, memoria, disco, problemas ativos e trends de %1$s dias via API.'), $settings['trend_days'])],
+    [_('5. Nota'), _('100 menos os descontos da tabela; o estado segue a escala.')]
+];
+$flow = [];
+foreach ($flow_steps as $i => [$title, $text]) {
+    if ($i > 0) {
+        $flow[] = (new CSpan('→'))->addClass('proxy-health-flow-arrow')->setAttribute('aria-hidden', 'true');
+    }
+    $flow[] = (new CDiv([new CTag('strong', true, $title), (new CSpan($text))->addClass('proxy-health-muted')]))
+        ->addClass('proxy-health-flow-step');
+}
+
+$rules_visual = [
+    (new CDiv([
+        (new CTag('h3', true, _('Como a nota e lida')))->addClass('proxy-health-rule-title'),
+        (new CDiv([
+            (new CDiv([
+                (new CDiv([
+                    $scale_band(_('Critico < 40'), 40, 'is-critical'),
+                    $scale_band(_('Risco 40–69'), 30, 'is-risk'),
+                    $scale_band(_('Atencao 70–89'), 20, 'is-attention'),
+                    $scale_band(_('OK'), 10, 'is-ok')
+                ]))->addClass('proxy-health-scale'),
+                (new CDiv([new CSpan('0'), new CSpan('40'), new CSpan('70'), new CSpan('90'), new CSpan('100')]))
+                    ->addClass('proxy-health-scale-ticks proxy-health-num')
+            ])),
+            (new CDiv([
+                new CDiv(_('Cada proxy (e o Zabbix server, se selecionado) parte de 100 e perde pontos por regra; a nota minima e 0 e usa uma casa decimal.')),
+                (new CDiv(_('Desconto proporcional = pontos maximos x (valor - atencao) / (critico - atencao), limitado entre 0 e o maximo. Ex.: CPU media com atencao 75% e critico 95%: 85% desconta 5.')))
+                    ->addClass('proxy-health-muted')
+            ]))->addClass('proxy-health-scale-text')
+        ]))->addClass('proxy-health-scale-grid')
+    ]))->addClass('proxy-health-rule-section'),
+    (new CDiv([
+        (new CTag('h3', true, _('Regras que descontam pontos')))->addClass('proxy-health-rule-title'),
+        $score_table,
+        (new CDiv(_('P95 = percentil 95 dos picos horarios de trends: o pico tipico, ignorando as 5% horas mais extremas. Estados (versao, unsupported, ultimo acesso, memoria total, alertas) usam o valor atual.')))
+            ->addClass('proxy-health-muted proxy-health-rules-note')
+    ]))->addClass('proxy-health-rule-section'),
+    (new CDiv([
+        (new CTag('h3', true, _('Como a coleta funciona')))->addClass('proxy-health-rule-title'),
+        (new CDiv($flow))->addClass('proxy-health-flow')
+    ]))->addClass('proxy-health-rule-section')
+];
+
 $rules = (new CDiv([
     (new CDiv([
         (new CTag('h2', true, _('Regras de Negocio')))->addClass('proxy-health-title'),
         (new CDiv(_('Criterios tecnicos usados para leitura, avaliacao e interpretacao da saude dos proxies.')))
             ->addClass('proxy-health-muted')
     ]))->addClass('proxy-health-heading'),
+
+    (new CDiv($rules_visual))->addClass('proxy-health-rules proxy-health-rules-visual'),
+
+    (new CTag('h3', true, _('Regras detalhadas')))->addClass('proxy-health-rules-subtitle'),
 
     (new CDiv([
         $rules_section(_('Pre-requisitos'), [
