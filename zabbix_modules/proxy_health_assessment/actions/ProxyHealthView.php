@@ -284,6 +284,14 @@ class ProxyHealthView extends CController {
         }
         $vps_max = $this->inputNum('vps_max', 300);
 
+        // Versao de corte = major (ex.: "7.0") + patch minimo em campo proprio. Sem input, o major vem
+        // da versao deste frontend. Aceita o formato antigo "7.0.20" (usa so o major). O patch padrao
+        // continua 20 no 7.0 (comportamento anterior) e e 0 nas demais versoes.
+        $version_input = self::versionMajor((string) $this->getInput('version_cut', ''));
+        $version_cut = $version_input !== '' ? $version_input : self::frontendMajor();
+        $lastaccess_max = $this->inputSeconds('lastaccess_max', 900);
+        $trend_days = $this->inputDays('trend_days', 30);
+
         return [
             'host_groupid' => $host_groupid,
             'host_group_name' => $this->hostGroupName($host_groupid),
@@ -296,8 +304,10 @@ class ProxyHealthView extends CController {
             'proxy_template_indirect' => $this->getInput('proxy_template_indirect', 'Sim'),
             'zabbix_server_hostid' => $zabbix_server_hostid,
             'zabbix_server_host_name' => $this->hostName($zabbix_server_hostid),
-            'version_cut' => $this->getInput('version_cut', '7.0.20'),
-            'patch_min' => $this->inputNum('patch_min', 20),
+            'version_cut' => $version_cut,
+            'version_cut_source' => $version_input !== '' ? 'input' : 'frontend',
+            'frontend_version' => defined('ZABBIX_VERSION') ? ZABBIX_VERSION : '',
+            'patch_min' => (int) $this->inputNum('patch_min', $version_cut === '7.0' ? 20 : 0),
             'unsupported_max' => $unsupported_max_percent / 100,
             'unsupported_max_percent' => $unsupported_max_percent,
             'unsupported_crit_percent' => $unsupported_crit_percent,
@@ -319,8 +329,9 @@ class ProxyHealthView extends CController {
             'queue_10m_crit' => $this->inputNum('queue_10m_crit', 1000),
             'preproc_queue_max' => $this->inputNum('preproc_queue_max', 50),
             'preproc_queue_crit' => $this->inputNum('preproc_queue_crit', 1000),
-            'lastaccess_max' => $this->inputNum('lastaccess_max', 900),
-            'trend_days' => min(30, max(7, (int) $this->inputNum('trend_days', 30))),
+            'lastaccess_max' => $lastaccess_max,
+            'lastaccess_max_label' => self::secondsLabel($lastaccess_max),
+            'trend_days' => $trend_days,
             'consider_orphans' => $this->getInput('consider_orphans', 'Nao'),
             'consider_config' => $this->getInput('consider_config', 'Nao'),
             'show_process_recommendations' => $this->getInput('show_process_recommendations', 'Sim'),
@@ -1447,6 +1458,58 @@ class ProxyHealthView extends CController {
             }
         }
         return '';
+    }
+
+    /** "15m", "1h", "900" ou "900s" em segundos (sufixos de tempo do Zabbix). Invalido ou <= 0: padrao. */
+    private function inputSeconds(string $name, int $default): int {
+        $raw = trim((string) $this->getInput($name, ''));
+        if ($raw === '') {
+            return $default;
+        }
+
+        $seconds = ctype_digit($raw) ? (int) $raw : timeUnitToSeconds($raw);
+
+        return $seconds !== null && $seconds > 0 ? (int) $seconds : $default;
+    }
+
+    /** Janela de trends em dias: "30d", "2w" ou "30" (dias, formato antigo); limitada entre 7 e 30. */
+    private function inputDays(string $name, int $default): int {
+        $raw = trim((string) $this->getInput($name, ''));
+        if ($raw === '') {
+            return $default;
+        }
+
+        if (ctype_digit($raw)) {
+            $days = (int) $raw;
+        }
+        else {
+            $seconds = timeUnitToSeconds($raw);
+            $days = $seconds !== null ? (int) round($seconds / 86400) : $default;
+        }
+
+        return min(30, max(7, $days));
+    }
+
+    /** 900 -> "15m", 3600 -> "1h", 86400 -> "1d", 45 -> "45s". */
+    private static function secondsLabel(int $seconds): string {
+        foreach (['d' => 86400, 'h' => 3600, 'm' => 60] as $suffix => $size) {
+            if ($seconds >= $size && $seconds % $size === 0) {
+                return ($seconds / $size).$suffix;
+            }
+        }
+
+        return $seconds.'s';
+    }
+
+    /** "7.0.20" ou "7.0" -> "7.0"; texto sem major.minor -> "". */
+    private static function versionMajor(string $version): string {
+        return preg_match('/^\s*(\d+)\.(\d+)/', $version, $m) === 1 ? $m[1].'.'.$m[2] : '';
+    }
+
+    private static function frontendMajor(): string {
+        $major = defined('ZABBIX_VERSION') ? self::versionMajor(ZABBIX_VERSION) : '';
+
+        return $major !== '' ? $major : '7.0';
     }
 
     private function inputNum(string $name, float $default): float {
