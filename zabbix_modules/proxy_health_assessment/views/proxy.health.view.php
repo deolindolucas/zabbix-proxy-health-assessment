@@ -268,6 +268,9 @@ $export = (new CDiv([
 $scope_label = $settings['host_groupid'] !== ''
     ? sprintf(_('grupo %s'), $settings['host_group_name'])
     : _('nenhum host group');
+if (($settings['host_group_source'] ?? '') === 'profile') {
+    $scope_label .= ' '._('(sua escolha salva)');
+}
 if (($settings['zabbix_server_host_name'] ?? '') !== '') {
     $scope_label .= ' + '.$settings['zabbix_server_host_name'];
 }
@@ -349,6 +352,7 @@ $rules = (new CDiv([
     (new CDiv([
         $rules_section(_('Pre-requisitos'), [
             _('Os proxies devem estar em um Host Group selecionavel pelo widget; por padrao e usado Zabbix/Proxies.'),
+            _('Se o grupo padrao nao existir, o campo fica vazio para o usuario escolher o grupo de proxies; a escolha fica salva no perfil do usuario e passa a ser usada nas proximas visitas. Um grupo salvo que deixar de existir e descartado automaticamente.'),
             _('O Host Group e obrigatorio e define o escopo principal. O template de proxy e opcional e refina os hosts do grupo.'),
             _('A busca por template indireto e configuravel: quando habilitada, tambem entram hosts que usam templates filhos/herdeiros do template selecionado.'),
             _('O Zabbix Server pode ser selecionado opcionalmente na aba de configuracao e, quando selecionado, entra como primeiro objeto do assessment.'),

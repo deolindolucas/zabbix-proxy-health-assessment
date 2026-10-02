@@ -1,5 +1,10 @@
 # Changelog — Proxy Health Assessment
 
+## 4.4.0
+- **Fallback do host group:** o padrão continua `Zabbix/Proxies`. Se ele não existir, o campo fica vazio e a tela pede para o usuário escolher o grupo de proxies; o botão do aviso leva direto ao campo, destacado. A escolha fica salva no perfil do usuário e é usada nas próximas visitas, com "(sua escolha salva)" no cabeçalho. Um grupo informado ou salvo que deixe de existir é descartado.
+- **Tema claro:** os textos coloridos (estado, links, problemas esmaecidos) têm cores próprias por tema, separadas das cores das barras, todas com contraste ≥ 4,5:1 nos temas claro e escuro do Zabbix 7.0 e 8.0.
+- A coluna "Nota" tem largura fixa, então o estado e a barra ficam alinhados entre as linhas ("82", "82,1"). Memória total igual a 0 não aparece mais como "0 GB RAM".
+
 ## 4.3.2
 - Enquanto a coleta assíncrona roda, a tabela não diz mais "Nenhum proxy encontrado" e a legenda mostra "—" no lugar de zeros. Se a coleta falhar, a mensagem aponta para o erro.
 - Removido o caminho síncrono de coleta (`collect()`/`collectTrends()`, cerca de 220 linhas), que não era mais chamado: a tela usa só o fluxo assíncrono (init → trend → finalize).
@@ -31,4 +36,4 @@
 ## Próximos passos
 - Tendência (diferença semanal, regressão nas médias diárias ou `forecast()`/`timeleft()`) e estado "Atenção preditiva".
 - Abrir o PR desta branch para a `main`.
-- Validar o tema claro e a exportação XLSX/CSV com muitos proxies.
+- Exportação: decidir se os valores em texto ("26.2%") seguem o formato pt-BR da tela ou continuam com ponto para planilhas.
