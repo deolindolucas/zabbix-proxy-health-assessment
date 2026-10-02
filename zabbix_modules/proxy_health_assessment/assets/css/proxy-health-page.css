@@ -6,6 +6,13 @@
     --ph-warn: #d39b20;
     --ph-risk: #d65d4a;
     --ph-accent: #027bc7;
+    /* Cores de TEXTO (estado, links, esmaecido), separadas das cores de barra: precisam de
+       contraste >= 4,5:1 sobre o fundo de cada tema. Tema claro aqui; escuro logo abaixo. */
+    --ph-good-text: #156647;
+    --ph-warn-text: #7a5200;
+    --ph-risk-text: #a3311b;
+    --ph-link: #0a5c99;
+    --ph-muted-text: #56616b;
     display: grid;
     gap: 12px;
     color: currentColor;
@@ -17,6 +24,11 @@
 html[theme*="dark"] .proxy-health,
 html[color-scheme="dark"] .proxy-health {
     color-scheme: dark;
+    --ph-good-text: #3fbf8f;
+    --ph-warn-text: #e8b13f;
+    --ph-risk-text: #f2856f;
+    --ph-link: #5aa9ec;
+    --ph-muted-text: #a8b0b8;
 }
 
 .proxy-health-tabs {
@@ -389,6 +401,13 @@ html[color-scheme="dark"] .proxy-health {
     background: rgba(211, 155, 32, .1);
 }
 
+.proxy-health-config-field.is-highlighted {
+    outline: 2px solid var(--ph-warn);
+    outline-offset: 4px;
+    border-radius: 4px;
+    transition: outline-color .3s ease;
+}
+
 .proxy-health-notice-action {
     min-height: 30px;
     padding: 4px 10px;
@@ -687,8 +706,10 @@ html[color-scheme="dark"] .proxy-health {
 }
 
 .proxy-health-score strong {
-    min-width: 38px;
+    /* Largura fixa ("100", "82", "62,2"): mantem o estado e a barra alinhados entre as linhas. */
+    min-width: 4ch;
     font-size: 18px;
+    text-align: right;
 }
 
 .proxy-health-score > div {
@@ -702,16 +723,16 @@ html[color-scheme="dark"] .proxy-health {
 }
 
 .proxy-health-row.is-ok .proxy-health-state {
-    color: var(--ph-good);
+    color: var(--ph-good-text);
 }
 
 .proxy-health-row.is-attention .proxy-health-state {
-    color: var(--ph-warn);
+    color: var(--ph-warn-text);
 }
 
 .proxy-health-row.is-risk .proxy-health-state,
 .proxy-health-row.is-critical .proxy-health-state {
-    color: var(--ph-risk);
+    color: var(--ph-risk-text);
 }
 
 .proxy-health-meter {
@@ -897,7 +918,7 @@ html[color-scheme="dark"] .proxy-health {
 }
 
 .proxy-health-problems li.is-muted {
-    opacity: .6;
+    color: var(--ph-muted-text);
 }
 
 .proxy-health-dot {
@@ -919,11 +940,15 @@ html[color-scheme="dark"] .proxy-health {
     font-size: 12px;
 }
 
+.proxy-health-link,
+.proxy-health-link-button {
+    color: var(--ph-link);
+}
+
 .proxy-health-link-button {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--ph-accent);
     cursor: pointer;
 }
 

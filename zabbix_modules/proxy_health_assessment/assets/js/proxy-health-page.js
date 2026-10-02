@@ -269,6 +269,9 @@
             const tab = event.target.closest('[data-proxy-tab]');
             if (tab && this.root.contains(tab)) {
                 this.selectTab(tab.dataset.proxyTab);
+                if (tab.dataset.proxyFocus) {
+                    this.focusConfigField(tab.dataset.proxyFocus);
+                }
                 return;
             }
 
@@ -331,6 +334,18 @@
             if (!this.root.contains(event.target)) {
                 this.closeExportMenu();
             }
+        }
+
+        // Leva o usuario ao campo da configuracao (ex.: host group vazio quando o padrao nao existe).
+        focusConfigField(name) {
+            const field = this.root.querySelector(`[data-proxy-pane="config"] #${name}`)?.closest('.proxy-health-config-field');
+            if (!field) {
+                return;
+            }
+            field.classList.add('is-highlighted');
+            field.scrollIntoView({block: 'center'});
+            field.querySelector('input:not([type="hidden"]), button')?.focus();
+            window.setTimeout(() => field.classList.remove('is-highlighted'), 2500);
         }
 
         toggleExportMenu() {
@@ -629,12 +644,15 @@
             notice.className = 'proxy-health-notice';
             notice.setAttribute('role', 'status');
             const text = document.createElement('span');
-            text.textContent = `Nenhum host group de proxies definido: o grupo padrao "${settings.host_group_default || 'Zabbix/Proxies'}" nao existe neste Zabbix, entao nenhum proxy foi avaliado.`;
+            text.textContent = settings.host_group_source === 'invalid'
+                ? 'O host group informado nao existe mais, entao nenhum proxy foi avaliado. Escolha o grupo de proxies; a escolha fica salva para as proximas visitas.'
+                : `O grupo padrao "${settings.host_group_default || 'Zabbix/Proxies'}" nao existe neste Zabbix, entao nenhum proxy foi avaliado. Escolha o grupo de proxies; a escolha fica salva para as proximas visitas.`;
             const action = document.createElement('button');
             action.type = 'button';
             action.className = 'proxy-health-notice-action';
             action.dataset.proxyTab = 'config';
-            action.textContent = 'Escolher grupo na Configuracao';
+            action.dataset.proxyFocus = 'host_groupid';
+            action.textContent = 'Escolher grupo de proxies';
             notice.append(text, action);
             return notice;
         }
@@ -657,7 +675,7 @@
             meta.textContent = [
                 proxy.assessment_role === 'server' ? 'Server' : 'Proxy',
                 proxy.version || 'versao —',
-                proxy.memory_total_gb !== null && proxy.memory_total_gb !== undefined
+                Number(proxy.memory_total_gb) > 0
                     ? `${Number(proxy.memory_total_gb).toLocaleString('pt-BR', {maximumFractionDigits: 1})} GB RAM`
                     : null
             ].filter(Boolean).join(' · ');

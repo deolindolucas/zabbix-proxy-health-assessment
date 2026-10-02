@@ -5,6 +5,7 @@ namespace Modules\ProxyHealthAssessment\Actions;
 use API;
 use CController;
 use CControllerResponseData;
+use CProfile;
 use CRoleHelper;
 use Throwable;
 
@@ -16,6 +17,11 @@ class ProxyHealthView extends CController {
     private const DEFAULT_HOST_GROUP = 'Zabbix/Proxies';
     private const PROCESS_PREFIX = 'zabbix[process,';
     private const PROFILE_PREFIX = '[proxy_health_assessment]';
+    // Preferencia do usuario: ultimo host group escolhido, usado quando a URL nao informa um.
+    private const PROFILE_HOST_GROUP = 'web.proxy_health.host_groupid';
+
+    /** De onde veio o host group em uso: input, profile, default, invalid (informado e inexistente) ou missing. */
+    private string $host_group_source = 'missing';
     private const TREND_BATCH_SIZE = 30;
     private const IMPORTANT_KEYS = [
         'agent.ping', 'system.cpu.load[all,avg1]', 'system.cpu.num', 'system.cpu.util',
@@ -282,6 +288,7 @@ class ProxyHealthView extends CController {
             'host_groupid' => $host_groupid,
             'host_group_name' => $this->hostGroupName($host_groupid),
             'host_group_missing' => $host_groupid === '',
+            'host_group_source' => $this->host_group_source,
             'host_group_default' => self::DEFAULT_HOST_GROUP,
             'proxy_templateid' => $proxy_templateid,
             'proxy_template_name' => $this->templateName($proxy_templateid),
@@ -1446,23 +1453,66 @@ class ProxyHealthView extends CController {
         return self::num($this->getInput($name, (string) $default)) ?? $default;
     }
 
+    /**
+     * Resolve o host group do assessment:
+     * 1. o informado na tela, se existir (vira a preferencia salva do usuario);
+     * 2. a preferencia salva, se o grupo ainda existir (senao ela e apagada);
+     * 3. o grupo padrao Zabbix/Proxies;
+     * 4. nenhum: o campo fica vazio para o usuario escolher.
+     */
     private function inputHostGroupId(): string {
         $input = $this->getInput('host_groupid', '');
         if (is_array($input)) {
             $input = reset($input) ?: '';
         }
         $input = (string) $input;
+
         if ($input !== '') {
-            return $input;
+            if ($this->hostGroupExists($input)) {
+                if ((string) CProfile::get(self::PROFILE_HOST_GROUP, '') !== $input) {
+                    CProfile::update(self::PROFILE_HOST_GROUP, $input, PROFILE_TYPE_ID);
+                }
+                $this->host_group_source = 'input';
+                return $input;
+            }
+
+            $this->host_group_source = 'invalid';
+            return '';
+        }
+
+        $saved = (string) CProfile::get(self::PROFILE_HOST_GROUP, '');
+        if ($saved !== '' && $saved !== '0') {
+            if ($this->hostGroupExists($saved)) {
+                $this->host_group_source = 'profile';
+                return $saved;
+            }
+            CProfile::delete(self::PROFILE_HOST_GROUP);
         }
 
         $groups = API::HostGroup()->get([
-            'output' => ['groupid', 'name'],
+            'output' => ['groupid'],
             'filter' => ['name' => [self::DEFAULT_HOST_GROUP]],
             'limit' => 1
         ]);
+        if ($groups) {
+            $this->host_group_source = 'default';
+            return (string) $groups[0]['groupid'];
+        }
 
-        return $groups ? (string) $groups[0]['groupid'] : '';
+        $this->host_group_source = 'missing';
+        return '';
+    }
+
+    private function hostGroupExists(string $groupid): bool {
+        if (!ctype_digit($groupid)) {
+            return false;
+        }
+
+        return (bool) API::HostGroup()->get([
+            'output' => ['groupid'],
+            'groupids' => [$groupid],
+            'limit' => 1
+        ]);
     }
 
     private function inputHostId(string $name): string {
