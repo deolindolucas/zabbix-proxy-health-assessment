@@ -1,5 +1,17 @@
 # Changelog — Proxy Health Assessment
 
+## 4.6.0
+
+- Tendencias de recursos por proxy (nao entram na nota): disco, memoria, load por nucleo (load / numero de CPUs), busy dos processos internos, caches e VPS.
+- Serie de pico diario a partir dos mesmos trends ja buscados (nenhuma consulta extra; o load passou a entrar nos trends); inclinacao por Theil-Sen; minimo de 14 dias.
+- Nova aba "Tendencias" no detalhe do proxy e botao "Ver tendencias". Situacao separa Teto (limite fisico: 100% ou numero de CPUs; vermelho, gera card) de Threshold (limite de trigger; laranja, sem card), com o prazo na etiqueta ("Teto em ~15d"); amarelo crescendo, verde estavel, azul descendo. Variacao em %/dia (absoluto). Processos/caches ociosos ficam recolhidos.
+- Sparkline com historico, projecao tracejada ate o horizonte, linha de threshold no estilo das linhas de trigger do Zabbix e linha de teto; escala minima de 10 p.p. para percentuais.
+- Card no detalhe e icone (exclamacao + relogio) na linha recolhida quando disco/memoria vao a 100%, o load passa do numero de CPUs, ou processo/cache vai a 100% ou mais. VPS nunca gera card.
+- Coluna "N dias" com sparkline simples nas abas Processos x config, Processos internos e Caches.
+- "P95" substituido por "Pico Nd" / "Media Nd" (N = janela de trends) em todas as telas, com tooltip explicativo nos cabecalhos; explicacao completa do pico nas regras de negocio. Descontos renomeados ("Pico de memoria alto" etc.).
+- Novo campo "Horizonte da projecao" (padrao 30d, sempre relativo, de 1d a 365d) e secao "Tendencias de recursos" nas regras de negocio.
+- Correcoes validadas com dados de producao: caches coletados como pfree eram lidos como uso na tendencia.
+
 ## 4.5.1
 - A aba Regras de negócio usa a largura toda da tela: os blocos visuais ocupam a largura inteira e as seções de texto completo ficam lado a lado em colunas.
 

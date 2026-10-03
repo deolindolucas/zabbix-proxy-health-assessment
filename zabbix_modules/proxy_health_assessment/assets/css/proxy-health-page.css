@@ -10,6 +10,7 @@
        contraste >= 4,5:1 sobre o fundo de cada tema. Tema claro aqui; escuro logo abaixo. */
     --ph-good-text: #156647;
     --ph-warn-text: #7a5200;
+    --ph-threshold-text: #a34a00;
     --ph-risk-text: #a3311b;
     --ph-link: #0a5c99;
     --ph-muted-text: #56616b;
@@ -26,6 +27,7 @@ html[color-scheme="dark"] .proxy-health {
     color-scheme: dark;
     --ph-good-text: #3fbf8f;
     --ph-warn-text: #e8b13f;
+    --ph-threshold-text: #f59a52;
     --ph-risk-text: #f2856f;
     --ph-link: #5aa9ec;
     --ph-muted-text: #a8b0b8;
@@ -1205,4 +1207,132 @@ html[color-scheme="dark"] .proxy-health {
 #proxy-health-config-form .table-forms-td-right > .form-input-margin {
     display: block;
     margin-top: 4px;
+}
+
+/* ---- Tendencias de recursos (nao entram na nota) ---- */
+.proxy-health-trend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    margin-left: 6px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(214, 93, 74, .16);
+    color: var(--ph-risk-text);
+    vertical-align: middle;
+}
+
+.proxy-health-trend-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.proxy-health-trend-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(214, 93, 74, .45);
+    border-radius: 6px;
+    background: rgba(214, 93, 74, .08);
+}
+
+.proxy-health-trend-card .proxy-health-trend-badge {
+    margin-left: 0;
+}
+
+.proxy-health-trend-card > div {
+    display: grid;
+    gap: 3px;
+}
+
+.proxy-health-trend-card strong {
+    color: var(--ph-risk-text);
+}
+
+.proxy-health-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+}
+
+.proxy-health-trend-count {
+    display: inline-block;
+    min-width: 16px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: rgba(214, 93, 74, .18);
+    color: var(--ph-risk-text);
+    font-size: 11px;
+    text-align: center;
+}
+
+.proxy-health-trend-table th,
+.proxy-health-trend-table td {
+    text-align: left;
+}
+
+.proxy-health-trend-table th.is-right,
+.proxy-health-trend-table td.is-right {
+    text-align: right;
+}
+
+.proxy-health-trend-group td {
+    padding-top: 12px;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    opacity: .75;
+}
+
+.proxy-health-trend-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.proxy-health-trend-pill.is-limit { background: rgba(214, 93, 74, .16); color: var(--ph-risk-text); }
+.proxy-health-trend-pill.is-growing { background: rgba(211, 155, 32, .16); color: var(--ph-warn-text); }
+.proxy-health-trend-pill.is-stable { background: rgba(38, 150, 111, .16); color: var(--ph-good-text); }
+.proxy-health-trend-pill.is-decreasing { background: rgba(2, 123, 199, .16); color: var(--ph-link); }
+.proxy-health-trend-pill.is-insufficient { background: var(--ph-chip); }
+
+.proxy-health-trend-pill.is-threshold { background: rgba(232, 122, 40, .16); color: var(--ph-threshold-text); }
+
+.proxy-health-sparkline .is-history { fill: none; stroke: currentColor; stroke-width: 1.6; }
+.proxy-health-sparkline .is-forecast { stroke: currentColor; stroke-width: 1.6; stroke-dasharray: 4 3; opacity: .85; }
+.proxy-health-sparkline .is-threshold-base { stroke: #6b6b6b; stroke-width: 1; }
+.proxy-health-sparkline .is-threshold-dash { stroke: #ffc859; stroke-width: 1; stroke-dasharray: 3 3; }
+.proxy-health-sparkline .is-ceiling-line { stroke: var(--ph-risk-text); stroke-width: 1; opacity: .55; }
+.proxy-health-sparkline.is-threshold { color: var(--ph-threshold-text); }
+.proxy-health-sparkline.is-limit { color: var(--ph-risk-text); }
+.proxy-health-sparkline.is-growing { color: var(--ph-warn-text); }
+.proxy-health-sparkline.is-stable { color: var(--ph-good-text); }
+.proxy-health-sparkline.is-decreasing { color: var(--ph-link); }
+.proxy-health-sparkline.is-insufficient { color: var(--ph-muted-text); }
+
+.proxy-health-trend-legend {
+    margin: 8px 0 0;
+    font-size: 12px;
+}
+
+/* Cabecalhos com explicacao no hover */
+.proxy-health-has-tip {
+    cursor: help;
+    text-decoration: underline dotted;
+    text-decoration-color: currentColor;
+    text-underline-offset: 3px;
+}
+
+/* "CPU pico 30d" e afins quebram em duas linhas em vez de alargar a tabela */
+.proxy-health-grid thead th.proxy-health-has-tip {
+    white-space: normal;
+    min-width: 64px;
+    max-width: 84px;
+    line-height: 1.25;
+    vertical-align: bottom;
 }

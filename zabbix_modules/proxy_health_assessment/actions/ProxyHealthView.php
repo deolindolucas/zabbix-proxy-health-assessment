@@ -44,6 +44,7 @@ class ProxyHealthView extends CController {
     ];
     private const TREND_KEYS = [
         'system.cpu.util',
+        'system.cpu.load[all,avg1]',
         'vm.memory.size[pused]',
         'vm.memory.size[pavailable]',
         'vm.memory.util',
@@ -67,6 +68,8 @@ class ProxyHealthView extends CController {
     ];
     // Percentil usado no lugar da leitura pontual (lastvalue) nas regras de carga.
     private const PEAK_PERCENTILE = 95;
+    // Minimo de dias com dados para calcular a tendencia de um recurso.
+    private const TREND_MIN_DAYS = 14;
     private const PROCESS_CONFIG_MAP = [
         'agent poller' => 'num.StartAgentPollers',
         'browser poller' => 'num.StartBrowserPollers',
@@ -172,6 +175,7 @@ class ProxyHealthView extends CController {
             'preproc_queue_crit' => 'string',
             'lastaccess_max' => 'string',
             'trend_days' => 'string',
+            'forecast_horizon' => 'string',
             'consider_orphans' => 'in Sim,Nao',
             'consider_config' => 'in Sim,Nao',
             'show_process_recommendations' => 'in Sim,Nao',
@@ -291,6 +295,7 @@ class ProxyHealthView extends CController {
         $version_cut = $version_input !== '' ? $version_input : self::frontendMajor();
         $lastaccess_max = $this->inputSeconds('lastaccess_max', 900);
         $trend_days = $this->inputDays('trend_days', 30);
+        $forecast_horizon = $this->inputDays('forecast_horizon', 30, 1, 365);
 
         return [
             'host_groupid' => $host_groupid,
@@ -332,6 +337,7 @@ class ProxyHealthView extends CController {
             'lastaccess_max' => $lastaccess_max,
             'lastaccess_max_label' => self::secondsLabel($lastaccess_max),
             'trend_days' => $trend_days,
+            'forecast_horizon' => $forecast_horizon,
             'consider_orphans' => $this->getInput('consider_orphans', 'Nao'),
             'consider_config' => $this->getInput('consider_config', 'Nao'),
             'show_process_recommendations' => $this->getInput('show_process_recommendations', 'Sim'),
@@ -693,7 +699,7 @@ class ProxyHealthView extends CController {
 
         foreach (array_chunk($slice, self::TREND_BATCH_SIZE) as $index => $batch) {
             $rows = API::Trend()->get([
-                'output' => ['itemid', 'num', 'value_min', 'value_avg', 'value_max'],
+                'output' => ['itemid', 'clock', 'num', 'value_min', 'value_avg', 'value_max'],
                 'itemids' => array_column($batch, 'itemid'),
                 'time_from' => $now - $trend_days * 86400,
                 'time_till' => $now
@@ -709,7 +715,9 @@ class ProxyHealthView extends CController {
                 $grouped[$row['itemid']][] = $row;
             }
             foreach ($batch as $item) {
-                $stats[$item['itemid']] = self::trendStats($grouped[$item['itemid']] ?? [], $item['_trend_mode'] ?? 'raw');
+                $stats[$item['itemid']] = self::trendStats($grouped[$item['itemid']] ?? [], $item['_trend_mode'] ?? 'raw',
+                    $now, $trend_days
+                );
             }
             $offset += count($batch);
             unset($rows, $grouped);
@@ -868,6 +876,7 @@ class ProxyHealthView extends CController {
             ?? $avg('vfs.fs.dependent.size[/,pused]')
             ?? ($disk_pfree_avg !== null ? 100 - $disk_pfree_avg : null);
         $vps_p95 = $p95('zabbix[wcache,values]');
+        [$trend_rows, $trend_alerts] = $this->buildTrendRows($items, $trends, $settings);
         $queue_10m_p95 = $p95('zabbix[queue,10m]');
         $preproc_queue_p95 = $p95('zabbix[preprocessing_queue]');
         $lastaccess = $value('zabbix[proxy,{HOST.HOST}, lastaccess]');
@@ -923,16 +932,16 @@ class ProxyHealthView extends CController {
             _('Versao abaixo do corte'));
         $deduct_scaled($unsupported_pct !== null ? $unsupported_pct * 100 : null, $settings['unsupported_max_percent'],
             $settings['unsupported_crit_percent'], 15, _('Itens unsupported acima do limite'));
-        $deduct_scaled($vps_p95, $settings['vps_max'], $settings['vps_crit'], 10, _('VPS P95 acima do limite'));
-        $deduct_scaled($cpu_p95, $settings['cpu_p95_max'], $settings['cpu_p95_crit'], 10, _('CPU P95 alta'));
+        $deduct_scaled($vps_p95, $settings['vps_max'], $settings['vps_crit'], 10, _('Pico de VPS acima do limite'));
+        $deduct_scaled($cpu_p95, $settings['cpu_p95_max'], $settings['cpu_p95_crit'], 10, _('Pico de CPU alto'));
         $deduct_scaled($cpu_avg, $settings['cpu_avg_max'], $settings['cpu_avg_crit'], 10, _('CPU media alta'));
-        $deduct_scaled($mem_p95, $settings['memory_p95_max'], $settings['memory_p95_crit'], 10, _('Memoria P95 alta'));
+        $deduct_scaled($mem_p95, $settings['memory_p95_max'], $settings['memory_p95_crit'], 10, _('Pico de memoria alto'));
         $deduct_scaled($mem_avg, $settings['memory_avg_max'], $settings['memory_avg_crit'], 10, _('Memoria media alta'));
-        $deduct_scaled($disk_p95, $settings['disk_p95_max'], $settings['disk_p95_crit'], 10, _('Disco P95 alto'));
+        $deduct_scaled($disk_p95, $settings['disk_p95_max'], $settings['disk_p95_crit'], 10, _('Pico de disco alto'));
         $deduct_scaled($disk_avg, $settings['disk_avg_max'], $settings['disk_avg_crit'], 10, _('Disco media alta'));
-        $deduct_scaled($queue_10m_p95, $settings['queue_10m_max'], $settings['queue_10m_crit'], 10, _('Fila 10m P95 acima do limite'));
+        $deduct_scaled($queue_10m_p95, $settings['queue_10m_max'], $settings['queue_10m_crit'], 10, _('Pico da fila 10m acima do limite'));
         $deduct_scaled($preproc_queue_p95, $settings['preproc_queue_max'], $settings['preproc_queue_crit'], 10,
-            _('Preprocessing queue P95 acima do limite'));
+            _('Pico da preprocessing queue acima do limite'));
         $deduct($settings['consider_config'] === 'Sim' && $score_config_findings, 15, implode('; ', $score_config_findings));
 
         foreach ($summary_config_findings as $finding) {
@@ -961,6 +970,8 @@ class ProxyHealthView extends CController {
             'unsupported' => $unsupported,
             'items' => $total_items,
             'vps_p95' => $vps_p95,
+            'trends' => $trend_rows,
+            'trend_alerts' => $trend_alerts,
             'cpu_p95' => $cpu_p95,
             'cpu_avg' => $cpu_avg,
             'memory_total_gb' => self::bytesToGib($value('vm.memory.size[total]')),
@@ -1040,7 +1051,7 @@ class ProxyHealthView extends CController {
             }
             $action = '';
             if ($status === 'Avaliar aumento') {
-                $action = sprintf(_('%s: recomendacao de aumento%s. Configurado %s em %s, recomendado %s, P95 %s%%, media trends %s%%.'),
+                $action = sprintf(_('%s: recomendacao de aumento%s. Configurado %s em %s, recomendado %s, pico %s%%, media %s%%.'),
                     $process,
                     in_array($process, self::ASYNC_STEP_PROCESSES, true) ? _(' gradual') : '',
                     self::displayValue($config_value),
@@ -1054,12 +1065,12 @@ class ProxyHealthView extends CController {
                 $target_value = $recommended_floor !== null ? $recommended_floor : $recommended_value;
                 $action = $recommended_floor === null && $p95 === 0.0 && $avg === 0.0
                         && $config_value !== null && $config_value > 1
-                    ? sprintf(_('%s: recomendacao de diminuicao para 1. Configurado %s em %s, sem uso no P95 nem na media de trends.'),
+                    ? sprintf(_('%s: recomendacao de diminuicao para 1. Configurado %s em %s, sem uso no pico nem na media.'),
                         $process,
                         self::displayValue($config_value),
                         $param
                     )
-                    : sprintf(_('%s: recomendacao de diminuicao. Configurado %s em %s, recomendado %s, P95 %s%%, media trends %s%%.'),
+                    : sprintf(_('%s: recomendacao de diminuicao. Configurado %s em %s, recomendado %s, pico %s%%, media %s%%.'),
                         $process,
                         self::displayValue($config_value),
                         $param,
@@ -1451,6 +1462,179 @@ class ProxyHealthView extends CController {
         return null;
     }
 
+    /**
+     * Tendencias de recursos do proxy (nao entram na nota).
+     * Usa a serie de P95 diario que ja vem dos trends da janela configurada; nenhuma consulta extra.
+     */
+    private function buildTrendRows(array $items, array $trends, array $settings): array {
+        $horizon = (int) $settings['forecast_horizon'];
+        $daily = static function(string $key, bool $inverted = false) use ($items, $trends): ?array {
+            if (!isset($items[$key])) {
+                return null;
+            }
+            $series = $trends[$items[$key]['itemid']]['daily'][$inverted ? 'low' : 'max'] ?? null;
+            if (!is_array($series)) {
+                return null;
+            }
+
+            return $inverted
+                ? array_map(static fn($v) => $v === null ? null : 100 - $v, $series)
+                : $series;
+        };
+        $first = static function(array $candidates) use ($daily): ?array {
+            foreach ($candidates as [$key, $inverted]) {
+                $series = $daily($key, $inverted);
+                if ($series !== null && array_filter($series, static fn($v) => $v !== null)) {
+                    return $series;
+                }
+            }
+
+            return null;
+        };
+
+        $rows = [];
+        $add = static function(string $group, string $label, ?array $series, float $limit, string $unit,
+                bool $capacity) use (&$rows, $horizon): void {
+            if ($series === null) {
+                return;
+            }
+            $row = ['group' => $group, 'label' => $label, 'unit' => $unit, 'capacity' => $capacity]
+                + self::forecast($series, $limit, $horizon, $capacity);
+            // Sem teto fisico (VPS): so a cor da situacao, nunca card.
+            if ($unit !== '%' && !$capacity) {
+                $row['card'] = false;
+                $row['card_days'] = null;
+            }
+            $rows[] = $row;
+        };
+
+        // Capacidade da VM: estourar aqui pode derrubar o proxy.
+        $add('vm', _('Disco /'), $first([
+            ['vfs.fs.size[/,pused]', false], ['vfs.fs.dependent.size[/,pused]', false],
+            ['vfs.fs.size[/,pfree]', true], ['vfs.fs.dependent.size[/,pfree]', true]
+        ]), 100, '%', true);
+        $add('vm', _('Memoria'), $first([
+            ['vm.memory.size[pused]', false], ['vm.memory.util', false], ['vm.memory.utilization', false],
+            ['vm.memory.size[pavailable]', true]
+        ]), 100, '%', true);
+        $cpu_cores = self::num($items['system.cpu.num']['lastvalue'] ?? null);
+        $load = $daily('system.cpu.load[all,avg1]');
+        if ($load !== null && $cpu_cores !== null && $cpu_cores > 0) {
+            $add('vm', sprintf(_('Load por nucleo (%1$s CPUs)'), (int) $cpu_cores),
+                array_map(static fn($v) => $v === null ? null : $v / $cpu_cores, $load), 1.0, '', true
+            );
+        }
+
+        // Processos e caches: o limite de cor e o threshold da configuracao; card so se projetado >= 100%.
+        $process_keys = array_filter(array_keys($items), static fn($key) =>
+            strpos($key, self::PROCESS_PREFIX) === 0 && substr($key, -strlen(',avg,busy]')) === ',avg,busy]'
+        );
+        sort($process_keys);
+        foreach ($process_keys as $key) {
+            $add('process', self::processName($key), $daily($key), (float) $settings['poller_threshold'], '%', false);
+        }
+
+        $caches = [
+            [_('Configuration cache'), [['zabbix[rcache,buffer,pused]', false], ['zabbix[rcache,buffer,pfree]', true]]],
+            [_('History write cache'), [['zabbix[wcache,history,pused]', false], ['zabbix[wcache,history,pfree]', true]]],
+            [_('History index cache'), [['zabbix[wcache,index,pused]', false]]],
+            [_('Trend write cache'), [['zabbix[wcache,trend,pused]', false]]],
+            [_('Value cache'), [['zabbix[vcache,buffer,pused]', false]]],
+            [_('Proxy memory buffer'), [['zabbix[proxy_buffer,buffer,pused]', false]]],
+            [_('VMware cache'), [['zabbix[vmware,buffer,pused]', false]]]
+        ];
+        foreach ($caches as [$label, $candidates]) {
+            $add('cache', $label, $first($candidates), (float) $settings['cache_threshold'], '%', false);
+        }
+
+        $add('load', _('VPS'), $daily('zabbix[wcache,values]'), (float) $settings['vps_max'], '', false);
+
+        $alerts = [];
+        foreach ($rows as $row) {
+            if ($row['card']) {
+                $alerts[] = ['label' => $row['label'], 'group' => $row['group'], 'days' => $row['card_days'] ?? null,
+                    'current' => $row['current'], 'slope' => $row['slope'], 'card_limit' => $row['card_limit'],
+                    'unit' => $row['unit']];
+            }
+        }
+
+        return [$rows, $alerts];
+    }
+
+    /**
+     * Projecao de uma serie diaria (mais antigo -> hoje) pela inclinacao de Theil-Sen (mediana das
+     * inclinacoes entre todos os pares de dias), robusta a dias atipicos.
+     *
+     * status: insufficient (< 14 dias), limit (projecao >= limite), growing, decreasing, stable.
+     * card: so para recursos de capacidade da VM projetados no limite, ou qualquer recurso projetado >= 100%.
+     */
+    private static function forecast(array $series, float $limit, int $horizon, bool $capacity): array {
+        $points = [];
+        foreach (array_values($series) as $x => $y) {
+            if ($y !== null) {
+                $points[] = [$x, (float) $y];
+            }
+        }
+        $result = [
+            'series' => array_map(static fn($v) => $v === null ? null : round((float) $v, 3), array_values($series)),
+            'days' => count($points), 'limit' => $limit, 'current' => null, 'slope' => null,
+            'projection' => null, 'days_to_limit' => null, 'status' => 'insufficient', 'card' => false,
+            'card_limit' => $capacity ? $limit : 100.0
+        ];
+        if (count($points) < self::TREND_MIN_DAYS) {
+            return $result;
+        }
+
+        $slopes = [];
+        $count = count($points);
+        for ($i = 0; $i < $count; $i++) {
+            for ($j = $i + 1; $j < $count; $j++) {
+                $slopes[] = ($points[$j][1] - $points[$i][1]) / ($points[$j][0] - $points[$i][0]);
+            }
+        }
+        $slope = self::median($slopes);
+        $intercept = self::median(array_map(static fn($p) => $p[1] - $slope * $p[0], $points));
+        $last_x = count($series) - 1;
+        $current = max(0.0, $intercept + $slope * $last_x);
+        $projection = max(0.0, $current + $slope * $horizon);
+
+        $card_limit = $result['card_limit'];
+        $days_to = static function(float $target) use ($current, $slope): ?float {
+            if ($current >= $target) {
+                return 0.0;
+            }
+
+            return $slope > 0 ? ($target - $current) / $slope : null;
+        };
+        // "Estavel" quando a variacao no horizonte fica abaixo de 5% do limite.
+        $tolerance = 0.05 * max($limit, 0.0001);
+        $change = $slope * $horizon;
+        $status = $projection >= $limit
+            ? 'limit'
+            : ($change >= $tolerance ? 'growing' : ($change <= -$tolerance ? 'decreasing' : 'stable'));
+
+        return [
+            'current' => round($current, 3),
+            'slope' => round($slope, 4),
+            'projection' => round($projection, 3),
+            'days_to_limit' => $status === 'limit' ? $days_to($limit) : null,
+            'status' => $status,
+            'card' => $projection >= $card_limit,
+            'card_days' => $projection >= $card_limit ? $days_to($card_limit) : null
+        ] + $result;
+    }
+
+    private static function median(array $values): float {
+        sort($values, SORT_NUMERIC);
+        $count = count($values);
+        if ($count === 0) {
+            return 0.0;
+        }
+        $mid = intdiv($count, 2);
+
+        return $count % 2 ? (float) $values[$mid] : ($values[$mid - 1] + $values[$mid]) / 2;
+    }
+
     private function hostInterface(array $host): string {
         foreach (($host['interfaces'] ?? []) as $interface) {
             if ($interface['main'] === '1') {
@@ -1472,8 +1656,8 @@ class ProxyHealthView extends CController {
         return $seconds !== null && $seconds > 0 ? (int) $seconds : $default;
     }
 
-    /** Janela de trends em dias: "30d", "2w" ou "30" (dias, formato antigo); limitada entre 7 e 30. */
-    private function inputDays(string $name, int $default): int {
+    /** Dias a partir de "30d", "2w" ou "30" (dias, formato antigo), limitados entre $min e $max. */
+    private function inputDays(string $name, int $default, int $min = 7, int $max = 30): int {
         $raw = trim((string) $this->getInput($name, ''));
         if ($raw === '') {
             return $default;
@@ -1487,7 +1671,7 @@ class ProxyHealthView extends CController {
             $days = $seconds !== null ? (int) round($seconds / 86400) : $default;
         }
 
-        return min(30, max(7, $days));
+        return min($max, max($min, $days));
     }
 
     /** 900 -> "15m", 3600 -> "1h", 86400 -> "1d", 45 -> "45s". */
@@ -1890,12 +2074,15 @@ class ProxyHealthView extends CController {
      *          cuja inversao (100 - valor) e feita pelo chamador.
      * Em modo pfree o item ja e convertido para "usado": o maximo usado da hora e 100 - minimo livre.
      */
-    private static function trendStats(array $rows, string $mode): array {
+    private static function trendStats(array $rows, string $mode, int $now = 0, int $trend_days = 30): array {
         $samples = 0;
         $weighted = 0.0;
         $peaks = [];
         $lows = [];
+        $day_peaks = [];
+        $day_lows = [];
         foreach ($rows as $row) {
+            $day = $now > 0 ? (int) floor(($now - (int) ($row['clock'] ?? $now)) / 86400) : null;
             $count = (int) ($row['num'] ?? 0);
             $avg = self::num($row['value_avg'] ?? null);
             $value_max = self::num($row['value_max'] ?? null);
@@ -1911,16 +2098,39 @@ class ProxyHealthView extends CController {
             }
             if ($value_max !== null) {
                 $peaks[] = $value_max;
+                if ($day !== null && $day >= 0 && $day < $trend_days) {
+                    $day_peaks[$day][] = $value_max;
+                }
             }
             if ($value_min !== null) {
                 $lows[] = $value_min;
+                if ($day !== null && $day >= 0 && $day < $trend_days) {
+                    $day_lows[$day][] = $value_min;
+                }
             }
         }
+
+        // Serie diaria para tendencia: indice 0 = dia mais antigo da janela, ultimo = ultimas 24 h.
+        $daily = null;
+        if ($now > 0 && ($day_peaks || $day_lows)) {
+            $daily = ['max' => [], 'low' => []];
+            for ($day = $trend_days - 1; $day >= 0; $day--) {
+                $max = isset($day_peaks[$day]) ? self::percentile($day_peaks[$day], self::PEAK_PERCENTILE) : null;
+                $low = isset($day_lows[$day]) ? self::percentile($day_lows[$day], 100 - self::PEAK_PERCENTILE) : null;
+                $daily['max'][] = $max !== null ? round($max, 3) : null;
+                $daily['low'][] = $low !== null ? round($low, 3) : null;
+            }
+            if (!$day_lows) {
+                unset($daily['low']);
+            }
+        }
+
         return [
             'avg30d' => $samples ? $weighted / $samples : null,
             'p95' => self::percentile($peaks, self::PEAK_PERCENTILE),
             'p05_min' => self::percentile($lows, 100 - self::PEAK_PERCENTILE),
-            'hours' => count($peaks)
+            'hours' => count($peaks),
+            'daily' => $daily
         ];
     }
 
