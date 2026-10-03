@@ -1319,3 +1319,20 @@ html[color-scheme="dark"] .proxy-health {
     margin: 8px 0 0;
     font-size: 12px;
 }
+
+/* Cabecalhos com explicacao no hover */
+.proxy-health-has-tip {
+    cursor: help;
+    text-decoration: underline dotted;
+    text-decoration-color: currentColor;
+    text-underline-offset: 3px;
+}
+
+/* "CPU pico 30d" e afins quebram em duas linhas em vez de alargar a tabela */
+.proxy-health-grid thead th.proxy-health-has-tip {
+    white-space: normal;
+    min-width: 64px;
+    max-width: 84px;
+    line-height: 1.25;
+    vertical-align: bottom;
+}

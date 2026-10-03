@@ -144,14 +144,32 @@
         + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>';
     const percentFormat = (value) => `${value.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}%`;
     const countFormat = (value) => Math.round(value).toLocaleString('pt-BR');
+    // "Pico Nd" = percentil 95 dos picos horarios dos trends; o texto completo fica no tooltip e nas regras.
+    const PEAK_TIP = (days) => `Pico ${days}d: o Zabbix guarda o maior valor de cada hora (trends). Dos ultimos ${days} dias, `
+        + 'descartamos as 5% horas mais altas e usamos o maior valor restante (percentil 95): o pico que o proxy atinge com frequencia, sem picos isolados.';
+    const AVG_TIP = (days) => `Media ${days}d: media de todas as amostras dos trends dos ultimos ${days} dias.`;
+    const DAILY_TIP = (days) => `Pico de cada dia nos ultimos ${days} dias (percentil 95 dos picos horarios do dia), na cor da tendencia.`;
+    const headerTip = (label, days) => {
+        if (/pico/i.test(label)) {
+            return PEAK_TIP(days);
+        }
+        if (/m[eé]dia/i.test(label)) {
+            return AVG_TIP(days);
+        }
+        if (/dias$/i.test(label)) {
+            return DAILY_TIP(days);
+        }
+        return '';
+    };
     // Colunas da tabela: campo do payload e os settings de atencao/critico usados na regua de cada barra.
+    // {d} vira a janela de trends configurada.
     const METRIC_COLUMNS = [
-        {label: 'CPU P95', field: 'cpu_p95', warn: 'cpu_p95_max', crit: 'cpu_p95_crit', percent: true, format: percentFormat},
-        {label: 'Mem P95', field: 'memory_p95', warn: 'memory_p95_max', crit: 'memory_p95_crit', percent: true, format: percentFormat},
-        {label: 'Mem média', field: 'memory_avg', warn: 'memory_avg_max', crit: 'memory_avg_crit', percent: true, format: percentFormat},
-        {label: 'Disco P95', field: 'disk_p95', warn: 'disk_p95_max', crit: 'disk_p95_crit', percent: true, format: percentFormat},
-        {label: 'VPS P95', field: 'vps_p95', warn: 'vps_max', crit: 'vps_crit', format: countFormat},
-        {label: 'Fila 10m', field: 'queue_10m_p95', warn: 'queue_10m_max', crit: 'queue_10m_crit', format: countFormat},
+        {label: 'CPU pico {d}d', field: 'cpu_p95', warn: 'cpu_p95_max', crit: 'cpu_p95_crit', percent: true, format: percentFormat},
+        {label: 'Mem pico {d}d', field: 'memory_p95', warn: 'memory_p95_max', crit: 'memory_p95_crit', percent: true, format: percentFormat},
+        {label: 'Mem média {d}d', field: 'memory_avg', warn: 'memory_avg_max', crit: 'memory_avg_crit', percent: true, format: percentFormat},
+        {label: 'Disco pico {d}d', field: 'disk_p95', warn: 'disk_p95_max', crit: 'disk_p95_crit', percent: true, format: percentFormat},
+        {label: 'VPS pico {d}d', field: 'vps_p95', warn: 'vps_max', crit: 'vps_crit', format: countFormat},
+        {label: 'Fila 10m pico', field: 'queue_10m_p95', warn: 'queue_10m_max', crit: 'queue_10m_crit', format: countFormat},
         {label: 'Unsup.', field: 'unsupported_pct', factor: 100, warn: 'unsupported_max_percent', crit: 'unsupported_crit_percent', percent: true, format: percentFormat}
     ];
 
@@ -691,7 +709,17 @@
             const thead = document.createElement('thead');
             const headRow = document.createElement('tr');
             headRow.append(this.headCell('Objeto', 'is-left'), this.headCell('Nota', 'is-left'));
-            METRIC_COLUMNS.forEach((column) => headRow.append(this.headCell(column.label)));
+            const days = this.trendDays();
+            METRIC_COLUMNS.forEach((column) => {
+                const label = column.label.replace('{d}', days);
+                const th = this.headCell(label);
+                const tip = headerTip(label, days);
+                if (tip) {
+                    th.title = tip;
+                    th.classList.add('proxy-health-has-tip');
+                }
+                headRow.append(th);
+            });
             headRow.append(this.headCell('Descontos', 'is-left'));
             thead.append(headRow);
 
@@ -707,6 +735,10 @@
             table.append(thead, tbody);
             wrapper.append(table);
             this.cards.append(wrapper);
+        }
+
+        trendDays() {
+            return Number(this.data?.settings?.trend_days || 30);
         }
 
         headCell(label, className = '') {
@@ -1115,7 +1147,7 @@
                     id: 'process_config',
                     label: 'Processos x config',
                     table: this.detailTable('Pollers e processos com configuracao equivalente',
-                    ['Parametro', 'P95', 'Media trends', '30 dias', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+                    ['Parametro', `Pico ${this.trendDays()}d`, `Media ${this.trendDays()}d`, `${this.trendDays()} dias`, 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     configurableProcessRows
                     )
                 },
@@ -1123,7 +1155,7 @@
                     id: 'internal_processes',
                     label: 'Processos internos',
                     table: this.detailTable('Demais processos internos',
-                    ['Parametro', 'P95', 'Media trends', '30 dias', 'Status'],
+                    ['Parametro', `Pico ${this.trendDays()}d`, `Media ${this.trendDays()}d`, `${this.trendDays()} dias`, 'Status'],
                     nonConfigurableProcessRows
                     )
                 },
@@ -1131,7 +1163,7 @@
                     id: 'caches',
                     label: 'Caches',
                     table: this.detailTable('Caches versus configuracao',
-                    ['Cache', 'Uso P95', 'Media trends', '30 dias', 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+                    ['Cache', `Pico ${this.trendDays()}d`, `Media ${this.trendDays()}d`, `${this.trendDays()} dias`, 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     cacheConfig
                         .map((row) => [
                             row.cache, fmt(row.p95, 1, '%'), fmt(row.avg30d, 1, '%'),
@@ -1290,7 +1322,7 @@
             }
 
             const title = document.createElementNS(svgNs, 'title');
-            title.textContent = `Linha cheia: P95 diario dos ultimos ${count} dias. Tracejada: projecao para ${horizon} dias.`
+            title.textContent = `Linha cheia: pico diario dos ultimos ${count} dias. Tracejada: projecao para ${horizon} dias.`
                 + (showThreshold ? ` Amarela: threshold ${trendValue(threshold, row.unit)}.` : '')
                 + (showCeiling ? ` Vermelha: teto ${row.unit === '' ? '(numero de CPUs)' : trendValue(ceiling, row.unit)}.` : '');
             svg.append(title);
@@ -1327,7 +1359,7 @@
                 .filter(Boolean)
                 .join(' '));
             const title = document.createElementNS(svgNs, 'title');
-            title.textContent = `P95 diario dos ultimos ${values.length} dias · ${trendStatusLabel(row, status) || label}`;
+            title.textContent = `Pico diario dos ultimos ${values.length} dias · ${trendStatusLabel(row, status) || label}`;
             svg.append(line, title);
             return svg;
         }
@@ -1353,8 +1385,13 @@
             const order = {ceiling: 0, threshold: 1, growing: 2, decreasing: 3, stable: 4, insufficient: 5};
             const table = document.createElement('table');
             table.className = 'proxy-health-detail-table proxy-health-trend-table';
-            table.innerHTML = `<thead><tr><th>Recurso</th><th class="is-right">Hoje (P95)</th><th>Ultimos ${settings.trend_days || 30} dias · projecao</th>`
-                + `<th class="is-right">Variacao</th><th class="is-right">Em ${horizon}d</th><th class="is-right">Threshold / teto</th><th>Situacao</th></tr></thead>`;
+            table.innerHTML = '<thead><tr><th>Recurso</th>'
+                + '<th class="is-right proxy-health-has-tip" title="Pico do dia de hoje pela reta de tendencia (percentil 95 dos picos horarios), sem o ruido de um dia isolado.">Pico hoje</th>'
+                + `<th class="proxy-health-has-tip" title="${DAILY_TIP(settings.trend_days || 30)} Tracejada: projecao.">Ultimos ${settings.trend_days || 30} dias · projecao</th>`
+                + '<th class="is-right proxy-health-has-tip" title="Quanto o pico diario sobe ou desce por dia, em pontos absolutos (ex.: 80% para 81,3%).">Variacao</th>'
+                + `<th class="is-right">Em ${horizon}d</th>`
+                + '<th class="is-right proxy-health-has-tip" title="Threshold: limite de trigger (cor laranja, sem card). Teto: limite fisico, 100% ou numero de CPUs (cor vermelha, gera card).">Threshold / teto</th>'
+                + '<th>Situacao</th></tr></thead>';
             const tbody = document.createElement('tbody');
             Object.entries(TREND_GROUPS).forEach(([group, groupLabel]) => {
                 const allRows = rows.filter((row) => row.group === group)
@@ -1443,7 +1480,7 @@
             legend.className = 'proxy-health-muted proxy-health-trend-legend';
             legend.textContent = 'Teto (vermelho): passa do limite fisico (100% ou numero de CPUs) no horizonte, gera card. '
                 + 'Threshold (laranja): passa do threshold de trigger, sem card. Amarelo: crescendo · Verde: estavel · Azul: descendo. '
-                + 'Grafico: linha cheia = P95 diario da janela de trends; tracejada = projecao (Theil-Sen, minimo de 14 dias); amarela tracejada = threshold.';
+                + 'Grafico: linha cheia = pico diario da janela de trends; tracejada = projecao (Theil-Sen, minimo de 14 dias); amarela tracejada = threshold.';
             section.append(legend);
             return section;
         }
@@ -1463,6 +1500,11 @@
             headers.forEach((label) => {
                 const th = document.createElement('th');
                 th.textContent = label;
+                const tip = headerTip(label, this.trendDays());
+                if (tip) {
+                    th.title = tip;
+                    th.classList.add('proxy-health-has-tip');
+                }
                 headRow.append(th);
             });
             thead.append(headRow);
@@ -1571,13 +1613,13 @@
                     ['State', proxy.state],
                     ['Score', proxy.score],
                     ['Versao', proxy.version || '—'],
-                    ['VPS P95', fmt(proxy.vps_p95, 0)],
+                    [`VPS pico ${this.trendDays()}d`, fmt(proxy.vps_p95, 0)],
                     ['Unsupported %', pct(proxy.unsupported_pct)],
-                    ['CPU P95', fmt(proxy.cpu_p95, 1, '%')],
+                    [`CPU pico ${this.trendDays()}d`, fmt(proxy.cpu_p95, 1, '%')],
                     ['Memoria total', fmt(proxy.memory_total_gb, 1, ' GB')],
-                    ['Memoria P95', fmt(proxy.memory_p95, 1, '%')],
-                    ['Memoria media trends', fmt(proxy.memory_avg, 1, '%')],
-                    ['Disco P95', fmt(proxy.disk_p95, 1, '%')]
+                    [`Memoria pico ${this.trendDays()}d`, fmt(proxy.memory_p95, 1, '%')],
+                    [`Memoria media ${this.trendDays()}d`, fmt(proxy.memory_avg, 1, '%')],
+                    [`Disco pico ${this.trendDays()}d`, fmt(proxy.disk_p95, 1, '%')]
                 ].forEach(([parameter, value]) => add({
                     secao: 'Overview',
                     proxy: proxy.host,
@@ -1690,9 +1732,9 @@
                 {
                     name: 'Overview',
                     headers: [
-                        'Proxy', 'Tipo', 'State', 'Score', 'Versao', 'VPS P95', 'Unsupported %',
-                        'CPU P95', 'Mem total GB', 'Mem P95', 'Mem media trends',
-                        'Disco P95', 'Resumo'
+                        'Proxy', 'Tipo', 'State', 'Score', 'Versao', 'VPS pico', 'Unsupported %',
+                        'CPU pico', 'Mem total GB', 'Mem pico', 'Mem media',
+                        'Disco pico', 'Resumo'
                     ],
                     rows: this.data.proxies.map((proxy) => [
                         proxy.host,
@@ -1713,7 +1755,7 @@
                 {
                     name: 'Processos Config',
                     headers: [
-                        'Proxy', 'Parametro', 'P95', 'Media trends',
+                        'Proxy', 'Parametro', 'Pico', 'Media',
                         'Item de configuracao', 'Configurado', 'Recomendado',
                         'Status', 'Acao sugerida'
                     ],
@@ -1733,7 +1775,7 @@
                 },
                 {
                     name: 'Processos Internos',
-                    headers: ['Proxy', 'Parametro', 'P95', 'Media trends', 'Status'],
+                    headers: ['Proxy', 'Parametro', 'Pico', 'Media', 'Status'],
                     rows: this.data.process_config
                         .filter((row) => row.status === 'Sem parametro configuravel')
                         .map((row) => [
@@ -1747,7 +1789,7 @@
                 {
                     name: 'Caches',
                     headers: [
-                        'Proxy', 'Cache', 'Uso P95', 'Media trends', 'Parametro',
+                        'Proxy', 'Cache', 'Pico', 'Media', 'Parametro',
                         'Configurado', 'Recomendado', 'Status', 'Acao sugerida'
                     ],
                     rows: this.data.cache_config.map((row) => [

@@ -932,16 +932,16 @@ class ProxyHealthView extends CController {
             _('Versao abaixo do corte'));
         $deduct_scaled($unsupported_pct !== null ? $unsupported_pct * 100 : null, $settings['unsupported_max_percent'],
             $settings['unsupported_crit_percent'], 15, _('Itens unsupported acima do limite'));
-        $deduct_scaled($vps_p95, $settings['vps_max'], $settings['vps_crit'], 10, _('VPS P95 acima do limite'));
-        $deduct_scaled($cpu_p95, $settings['cpu_p95_max'], $settings['cpu_p95_crit'], 10, _('CPU P95 alta'));
+        $deduct_scaled($vps_p95, $settings['vps_max'], $settings['vps_crit'], 10, _('Pico de VPS acima do limite'));
+        $deduct_scaled($cpu_p95, $settings['cpu_p95_max'], $settings['cpu_p95_crit'], 10, _('Pico de CPU alto'));
         $deduct_scaled($cpu_avg, $settings['cpu_avg_max'], $settings['cpu_avg_crit'], 10, _('CPU media alta'));
-        $deduct_scaled($mem_p95, $settings['memory_p95_max'], $settings['memory_p95_crit'], 10, _('Memoria P95 alta'));
+        $deduct_scaled($mem_p95, $settings['memory_p95_max'], $settings['memory_p95_crit'], 10, _('Pico de memoria alto'));
         $deduct_scaled($mem_avg, $settings['memory_avg_max'], $settings['memory_avg_crit'], 10, _('Memoria media alta'));
-        $deduct_scaled($disk_p95, $settings['disk_p95_max'], $settings['disk_p95_crit'], 10, _('Disco P95 alto'));
+        $deduct_scaled($disk_p95, $settings['disk_p95_max'], $settings['disk_p95_crit'], 10, _('Pico de disco alto'));
         $deduct_scaled($disk_avg, $settings['disk_avg_max'], $settings['disk_avg_crit'], 10, _('Disco media alta'));
-        $deduct_scaled($queue_10m_p95, $settings['queue_10m_max'], $settings['queue_10m_crit'], 10, _('Fila 10m P95 acima do limite'));
+        $deduct_scaled($queue_10m_p95, $settings['queue_10m_max'], $settings['queue_10m_crit'], 10, _('Pico da fila 10m acima do limite'));
         $deduct_scaled($preproc_queue_p95, $settings['preproc_queue_max'], $settings['preproc_queue_crit'], 10,
-            _('Preprocessing queue P95 acima do limite'));
+            _('Pico da preprocessing queue acima do limite'));
         $deduct($settings['consider_config'] === 'Sim' && $score_config_findings, 15, implode('; ', $score_config_findings));
 
         foreach ($summary_config_findings as $finding) {
@@ -1051,7 +1051,7 @@ class ProxyHealthView extends CController {
             }
             $action = '';
             if ($status === 'Avaliar aumento') {
-                $action = sprintf(_('%s: recomendacao de aumento%s. Configurado %s em %s, recomendado %s, P95 %s%%, media trends %s%%.'),
+                $action = sprintf(_('%s: recomendacao de aumento%s. Configurado %s em %s, recomendado %s, pico %s%%, media %s%%.'),
                     $process,
                     in_array($process, self::ASYNC_STEP_PROCESSES, true) ? _(' gradual') : '',
                     self::displayValue($config_value),
@@ -1065,12 +1065,12 @@ class ProxyHealthView extends CController {
                 $target_value = $recommended_floor !== null ? $recommended_floor : $recommended_value;
                 $action = $recommended_floor === null && $p95 === 0.0 && $avg === 0.0
                         && $config_value !== null && $config_value > 1
-                    ? sprintf(_('%s: recomendacao de diminuicao para 1. Configurado %s em %s, sem uso no P95 nem na media de trends.'),
+                    ? sprintf(_('%s: recomendacao de diminuicao para 1. Configurado %s em %s, sem uso no pico nem na media.'),
                         $process,
                         self::displayValue($config_value),
                         $param
                     )
-                    : sprintf(_('%s: recomendacao de diminuicao. Configurado %s em %s, recomendado %s, P95 %s%%, media trends %s%%.'),
+                    : sprintf(_('%s: recomendacao de diminuicao. Configurado %s em %s, recomendado %s, pico %s%%, media %s%%.'),
                         $process,
                         self::displayValue($config_value),
                         $param,

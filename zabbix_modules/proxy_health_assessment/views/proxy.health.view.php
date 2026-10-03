@@ -66,15 +66,15 @@ $rules_section = static function(string $title, array $items): CDiv {
 
 // Limites do score: uma linha por metrica (atencao, critico, unidade, desconto maximo).
 $limit_rows = [
-    [_('CPU P95'), 'cpu_p95_max', 'cpu_p95_crit', '%', 10],
+    [_('CPU (pico)'), 'cpu_p95_max', 'cpu_p95_crit', '%', 10],
     [_('CPU media'), 'cpu_avg_max', 'cpu_avg_crit', '%', 10],
-    [_('Memoria P95'), 'memory_p95_max', 'memory_p95_crit', '%', 10],
+    [_('Memoria (pico)'), 'memory_p95_max', 'memory_p95_crit', '%', 10],
     [_('Memoria media'), 'memory_avg_max', 'memory_avg_crit', '%', 10],
-    [_('Disco P95'), 'disk_p95_max', 'disk_p95_crit', '%', 10],
+    [_('Disco (pico)'), 'disk_p95_max', 'disk_p95_crit', '%', 10],
     [_('Disco media'), 'disk_avg_max', 'disk_avg_crit', '%', 10],
-    [_('VPS P95'), 'vps_max', 'vps_crit', _('vps'), 10],
-    [_('Fila > 10 min (P95)'), 'queue_10m_max', 'queue_10m_crit', _('itens'), 10],
-    [_('Fila de preprocessing (P95)'), 'preproc_queue_max', 'preproc_queue_crit', _('itens'), 10],
+    [_('VPS (pico)'), 'vps_max', 'vps_crit', _('vps'), 10],
+    [_('Fila > 10 min (pico)'), 'queue_10m_max', 'queue_10m_crit', _('itens'), 10],
+    [_('Fila de preprocessing (pico)'), 'preproc_queue_max', 'preproc_queue_crit', _('itens'), 10],
     [_('Itens unsupported'), 'unsupported_max', 'unsupported_crit', '%', 15]
 ];
 $setting_value = static fn(string $name) => match ($name) {
@@ -271,9 +271,11 @@ if (($settings['zabbix_server_host_name'] ?? '') !== '') {
 $header = (new CDiv([
     (new CDiv([
         (new CTag('h2', true, _('Saude dos proxies')))->addClass('proxy-health-title'),
-        (new CDiv(sprintf(_('Assessment %1$s · janela de %2$s dias (P95 dos picos horarios) · escopo: %3$s'),
+        (new CDiv(sprintf(_('Assessment %1$s · janela de %2$s dias · escopo: %3$s'),
             $module_version, $settings['trend_days'], $scope_label
-        )))->addClass('proxy-health-muted')
+        )))
+            ->addClass('proxy-health-muted')
+            ->setAttribute('title', sprintf(_('Valores "pico %1$sd" = percentil 95 dos picos horarios dos trends dos ultimos %1$s dias. Detalhes em Regras de Negocio.'), $settings['trend_days']))
     ]))->addClass('proxy-health-header-title'),
     $tabs,
     (new CDiv(
@@ -354,18 +356,18 @@ $score_rules = [
         sprintf('< %1$s.%2$s', $settings['version_cut'], $settings['patch_min']), '15'],
     [_('Itens unsupported'), _('valor atual'), ['proportional'],
         $fmt_limit($settings['unsupported_max_percent'], $settings['unsupported_crit_percent'], '%'), '15'],
-    [_('CPU P95 · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+    [_('CPU pico · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
         $fmt_limit($settings['cpu_p95_max'], $settings['cpu_p95_crit'], '%').' · '
             .$fmt_limit($settings['cpu_avg_max'], $settings['cpu_avg_crit'], '%'), '10 + 10'],
-    [_('Memoria P95 · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+    [_('Memoria pico · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
         $fmt_limit($settings['memory_p95_max'], $settings['memory_p95_crit'], '%').' · '
             .$fmt_limit($settings['memory_avg_max'], $settings['memory_avg_crit'], '%'), '10 + 10'],
-    [_('Disco P95 · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+    [_('Disco pico · media'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
         $fmt_limit($settings['disk_p95_max'], $settings['disk_p95_crit'], '%').' · '
             .$fmt_limit($settings['disk_avg_max'], $settings['disk_avg_crit'], '%'), '10 + 10'],
-    [_('VPS P95'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+    [_('VPS pico'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
         $fmt_limit($settings['vps_max'], $settings['vps_crit']), '10'],
-    [_('Fila > 10 min · preprocessing (P95)'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
+    [_('Fila > 10 min · preprocessing (pico)'), sprintf(_('trends %1$sd'), $settings['trend_days']), ['proportional'],
         $fmt_limit($settings['queue_10m_max'], $settings['queue_10m_crit']).' · '
             .$fmt_limit($settings['preproc_queue_max'], $settings['preproc_queue_crit']), '10 + 10'],
     [_('Problemas orfaos (Disaster · relevante)'), _('problema atual'), ['optional', 'binary'],
@@ -433,7 +435,7 @@ $rules_visual = [
     (new CDiv([
         (new CTag('h3', true, _('Regras que descontam pontos')))->addClass('proxy-health-rule-title'),
         $score_table,
-        (new CDiv(_('P95 = percentil 95 dos picos horarios de trends: o pico tipico, ignorando as 5% horas mais extremas. Estados (versao, unsupported, ultimo acesso, memoria total, alertas) usam o valor atual.')))
+        (new CDiv(_('Pico = percentil 95 dos picos horarios de trends: o pico que o proxy atinge com frequencia, ignorando as 5% horas mais extremas. Media = media dos trends na janela. Estados (versao, unsupported, ultimo acesso, memoria total, alertas) usam o valor atual.')))
             ->addClass('proxy-health-muted proxy-health-rules-note')
     ]))->addClass('proxy-health-rule-section'),
     (new CDiv([
@@ -485,11 +487,15 @@ $rules = (new CDiv([
             _('Alertas Disaster ativos reduzem 50 pontos; alertas relevantes de saude do proxy/server reduzem 20 pontos.'),
             _('Problemas orfaos Disaster reduzem 50 pontos e problemas orfaos relevantes reduzem 20 pontos, somente quando a opcao de considerar orfaos esta habilitada.'),
             _('Versao abaixo do corte reduz 15 pontos. Itens unsupported acima do limite reduzem ate 15 pontos, de forma proporcional.'),
-            _('VPS, CPU, memoria, disco, fila 10m e preprocessing queue (P95 ou media) reduzem ate 10 pontos por criterio.'),
+            _('VPS, CPU, memoria, disco, fila 10m e preprocessing queue (pico ou media) reduzem ate 10 pontos por criterio.'),
             _('Regras de carga usam desconto proporcional: desconto = pontos maximos x (valor - limite) / (critico - limite), limitado entre 0 e o maximo. Ex.: CPU media com limite 75% e critico 95%: 76% desconta 0,5; 85% desconta 5; 95% ou mais desconta 10.'),
             _('Alertas Disaster e relevantes, versao abaixo do corte e config issues continuam com desconto integral (binario). Se o valor critico nao for maior que o limite, a regra tambem volta a ser binaria.'),
             _('O resumo mostra a contribuicao de cada regra entre parenteses, como "CPU media alta (-5)"; o score usa uma casa decimal.'),
-            _('P95 e o percentil 95 dos maximos horarios de trends na janela configurada: representa o pico tipico e ignora as 5% horas mais extremas. Ele substitui a leitura pontual (lastvalue), que dependia do momento em que a tela era aberta.'),
+            sprintf(_('O que e o "pico %1$sd": para cada hora o Zabbix guarda nos trends o menor, o medio e o maior valor do item. O modulo pega o maior valor de cada hora dos ultimos %1$s dias (%2$s horas), descarta as 5%% horas mais altas (cerca de %3$s horas) e usa o maior valor que sobra. Tecnicamente e o percentil 95 (P95) dos picos horarios.'),
+                $settings['trend_days'], $settings['trend_days'] * 24, (int) round($settings['trend_days'] * 24 * 0.05)
+            ),
+            _('Por que pico e nao o valor atual ou o maximo: o valor atual (lastvalue) depende do momento em que a tela e aberta, e o maximo absoluto e dominado por um unico evento (um restart, um backup). O pico ignora esses eventos isolados e mostra o nivel que o proxy realmente atinge com frequencia. Ex.: memoria com pico 30d de 92% significa que, em 95% das horas do mes, o maior uso da hora ficou em ate 92%.'),
+            _('Media: media de todas as amostras dos trends na janela, ponderada pelo numero de amostras de cada hora. Mostra o nivel de uso constante, enquanto o pico mostra a folga nos momentos de carga.'),
             _('Versao, itens unsupported, ultimo acesso, memoria total e alertas continuam usando o valor atual, por serem estados e nao series de carga.'),
             _('Quando configuracao do proxy esta habilitada, processos/caches com pressao operacional acima dos thresholds reduzem 15 pontos. Recomendacoes de diminuicao podem aparecer em Pontos de Atencao sem reduzir o score.'),
             _('As medias historicas usam a janela de trends configurada na tela, entre 7 e 30 dias.')
@@ -503,14 +509,14 @@ $rules = (new CDiv([
         $rules_section(_('Processos versus configuracao'), [
             _('Processos com parametro configuravel sao comparados com a diretiva equivalente do zabbix_proxy.conf, como StartPollers, StartPreprocessors, StartSNMPPollers e StartTrappers.'),
             _('Managers e processos internos sem diretiva de quantidade, como internal poller, task manager, self-monitoring e preprocessing manager, sao exibidos apenas como leitura operacional.'),
-            _('Pollers comuns entram como Avaliar aumento quando o busy P95 ou a media historica ultrapassa o threshold de pollers; pools sem uso no P95 e na media podem recomendar reducao para 1.'),
+            _('Pollers comuns entram como Avaliar aumento quando o pico de busy ou a media historica ultrapassa o threshold de pollers; pools sem uso no pico e na media podem recomendar reducao para 1.'),
             _('Pollers/checadores assincronos, como agent poller, SNMP poller, HTTP agent poller e discovery worker, recomendam aumento gradual de 1 processo quando atingem 100% de busy.'),
             _('Discovery worker usa StartDiscoverers como quantidade configurada, preserva o baseline padrao 5 e deve ser interpretado junto com discovery queue quando houver fila.'),
             _('Preprocessing worker usa StartPreprocessors, preserva baseline minimo 16 ou numero de CPUs quando maior, e so recomenda reducao abaixo do configurado quando ainda fica acima desse baseline.'),
             _('Config issues so alteram o score quando indicam pressao operacional acima dos thresholds; recomendacoes de diminuicao podem aparecer no resumo sem penalizar o score.')
         ]),
         $rules_section(_('Caches versus configuracao'), [
-            _('Caches sao avaliados pelo uso P95 e pela media historica contra o threshold de caches.'),
+            _('Caches sao avaliados pelo pico de uso e pela media historica contra o threshold de caches.'),
             _('Quando o cache esta OK, nao ha recomendacao de ajuste; a coluna Recomendado permanece vazia.'),
             _('Quando o cache passa do threshold, o recomendado usa o item num.recomendado.* quando valido ou calcula localmente com carga desejada de 60%.'),
             _('Valores configurados como 8M, 16M ou 1G sao convertidos para bytes no backend e apresentados em unidade humana no frontend.'),
@@ -519,11 +525,11 @@ $rules = (new CDiv([
         $rules_section(_('Tendencias de recursos'), [
             _('As tendencias nunca descontam da nota: a nota mede o estado atual, a tendencia mostra para onde o proxy vai.'),
             sprintf(_('Recursos acompanhados: disco, memoria, load por nucleo (load / numero de CPUs), busy dos processos internos, uso dos caches e VPS. A projecao vai ate o horizonte configurado (hoje %1$s dias, sempre relativo a data atual).'), $settings['forecast_horizon']),
-            _('A serie usada e o P95 diario dos trends da janela configurada; a inclinacao e calculada por Theil-Sen (mediana das inclinacoes entre todos os pares de dias), que ignora dias atipicos. Com menos de 14 dias de dados a tendencia aparece como dados insuficientes.'),
-            _('Nenhuma consulta extra e feita: a tendencia reaproveita os mesmos trends ja buscados para o P95.'),
+            _('A serie usada e o pico diario (percentil 95 dos picos horarios de cada dia) da janela de trends; a inclinacao e calculada por Theil-Sen (mediana das inclinacoes entre todos os pares de dias), que ignora dias atipicos. "Pico hoje" e o ponto de hoje sobre essa reta. Com menos de 14 dias de dados a tendencia aparece como dados insuficientes.'),
+            _('Nenhuma consulta extra e feita: a tendencia reaproveita os mesmos trends ja buscados para o pico. A coluna de sparkline das abas de processos e caches usa a mesma serie diaria.'),
             _('Dois limites: threshold (limite de trigger: o threshold de pollers para processos, o de caches para caches e o VPS maximo para VPS) e teto (limite fisico: 100% para disco, memoria, processos e caches; o numero de CPUs para o load). Disco, memoria e load nao tem threshold; VPS nao tem teto.'),
             _('Situacao: Teto (vermelho) quando a projecao passa do teto no horizonte; Threshold (laranja) quando passa so do threshold; amarelo quando cresce; verde quando estavel (variacao menor que 5% do limite no horizonte); azul quando desce. A etiqueta traz o prazo estimado, por exemplo "Teto em ~16d".'),
-            _('Grafico: linha cheia com o P95 diario da janela de trends, linha tracejada com a projecao ate o horizonte e, quando proximas da serie, a linha do threshold (amarela tracejada, como as linhas de trigger do Zabbix) e a do teto (vermelha).'),
+            _('Grafico: linha cheia com o pico diario da janela de trends, linha tracejada com a projecao ate o horizonte e, quando proximas da serie, a linha do threshold (amarela tracejada, como as linhas de trigger do Zabbix) e a do teto (vermelha).'),
             _('Vira card no detalhe do proxy e icone (exclamacao com relogio) na linha recolhida quando: disco ou memoria projetados para 100% ou mais; load projetado acima do numero de CPUs; ou um processo/cache projetado para 100% ou mais.')
         ]),
         $rules_section(_('Boas praticas reforcadas'), [
