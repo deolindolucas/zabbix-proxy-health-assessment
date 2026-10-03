@@ -10,6 +10,7 @@
        contraste >= 4,5:1 sobre o fundo de cada tema. Tema claro aqui; escuro logo abaixo. */
     --ph-good-text: #156647;
     --ph-warn-text: #7a5200;
+    --ph-threshold-text: #a34a00;
     --ph-risk-text: #a3311b;
     --ph-link: #0a5c99;
     --ph-muted-text: #56616b;
@@ -26,6 +27,7 @@ html[color-scheme="dark"] .proxy-health {
     color-scheme: dark;
     --ph-good-text: #3fbf8f;
     --ph-warn-text: #e8b13f;
+    --ph-threshold-text: #f59a52;
     --ph-risk-text: #f2856f;
     --ph-link: #5aa9ec;
     --ph-muted-text: #a8b0b8;
@@ -1299,7 +1301,14 @@ html[color-scheme="dark"] .proxy-health {
 .proxy-health-trend-pill.is-decreasing { background: rgba(2, 123, 199, .16); color: var(--ph-link); }
 .proxy-health-trend-pill.is-insufficient { background: var(--ph-chip); }
 
-.proxy-health-sparkline polyline { stroke: currentColor; }
+.proxy-health-trend-pill.is-threshold { background: rgba(232, 122, 40, .16); color: var(--ph-threshold-text); }
+
+.proxy-health-sparkline .is-history { fill: none; stroke: currentColor; stroke-width: 1.6; }
+.proxy-health-sparkline .is-forecast { stroke: currentColor; stroke-width: 1.6; stroke-dasharray: 4 3; opacity: .85; }
+.proxy-health-sparkline .is-threshold-base { stroke: #6b6b6b; stroke-width: 1; }
+.proxy-health-sparkline .is-threshold-dash { stroke: #ffc859; stroke-width: 1; stroke-dasharray: 3 3; }
+.proxy-health-sparkline .is-ceiling-line { stroke: var(--ph-risk-text); stroke-width: 1; opacity: .55; }
+.proxy-health-sparkline.is-threshold { color: var(--ph-threshold-text); }
 .proxy-health-sparkline.is-limit { color: var(--ph-risk-text); }
 .proxy-health-sparkline.is-growing { color: var(--ph-warn-text); }
 .proxy-health-sparkline.is-stable { color: var(--ph-good-text); }

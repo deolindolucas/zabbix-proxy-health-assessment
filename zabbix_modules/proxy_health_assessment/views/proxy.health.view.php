@@ -521,8 +521,9 @@ $rules = (new CDiv([
             sprintf(_('Recursos acompanhados: disco, memoria, load por nucleo (load / numero de CPUs), busy dos processos internos, uso dos caches e VPS. A projecao vai ate o horizonte configurado (hoje %1$s dias, sempre relativo a data atual).'), $settings['forecast_horizon']),
             _('A serie usada e o P95 diario dos trends da janela configurada; a inclinacao e calculada por Theil-Sen (mediana das inclinacoes entre todos os pares de dias), que ignora dias atipicos. Com menos de 14 dias de dados a tendencia aparece como dados insuficientes.'),
             _('Nenhuma consulta extra e feita: a tendencia reaproveita os mesmos trends ja buscados para o P95.'),
-            _('Cores: vermelho quando a projecao passa do limite dentro do horizonte; amarelo quando cresce; verde quando estavel (variacao menor que 5% do limite no horizonte); azul quando desce.'),
-            _('Limites de cor: 100% para disco e memoria, 1 por nucleo para o load, o threshold de pollers para processos, o threshold de caches para caches e o VPS maximo para VPS.'),
+            _('Dois limites: threshold (limite de trigger: o threshold de pollers para processos, o de caches para caches e o VPS maximo para VPS) e teto (limite fisico: 100% para disco, memoria, processos e caches; o numero de CPUs para o load). Disco, memoria e load nao tem threshold; VPS nao tem teto.'),
+            _('Situacao: Teto (vermelho) quando a projecao passa do teto no horizonte; Threshold (laranja) quando passa so do threshold; amarelo quando cresce; verde quando estavel (variacao menor que 5% do limite no horizonte); azul quando desce. A etiqueta traz o prazo estimado, por exemplo "Teto em ~16d".'),
+            _('Grafico: linha cheia com o P95 diario da janela de trends, linha tracejada com a projecao ate o horizonte e, quando proximas da serie, a linha do threshold (amarela tracejada, como as linhas de trigger do Zabbix) e a do teto (vermelha).'),
             _('Vira card no detalhe do proxy e icone (exclamacao com relogio) na linha recolhida quando: disco ou memoria projetados para 100% ou mais; load projetado acima do numero de CPUs; ou um processo/cache projetado para 100% ou mais.')
         ]),
         $rules_section(_('Boas praticas reforcadas'), [

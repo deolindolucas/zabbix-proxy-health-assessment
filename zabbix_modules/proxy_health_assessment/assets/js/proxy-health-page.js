@@ -87,13 +87,39 @@
             : '—';
     };
     const TREND_STATUS = {
-        limit: ['is-limit', 'Vai passar do limite'],
+        ceiling: ['is-limit', 'Teto'],
+        threshold: ['is-threshold', 'Threshold'],
         growing: ['is-growing', 'Crescendo'],
         stable: ['is-stable', 'Estavel'],
         decreasing: ['is-decreasing', 'Descendo'],
         insufficient: ['is-insufficient', 'Dados insuficientes']
     };
     const TREND_GROUPS = {vm: 'Capacidade da VM', process: 'Processos', cache: 'Caches', load: 'Carga'};
+    // Threshold = limite de trigger (cor); teto = limite fisico (100% ou numero de CPUs; gera card).
+    const trendLimits = (row) => ({
+        threshold: row.capacity ? null : Number(row.limit),
+        ceiling: row.capacity ? Number(row.limit) : (row.unit === '%' ? 100 : null)
+    });
+    const trendStatus = (row) => {
+        if (row.card) {
+            return 'ceiling';
+        }
+        return row.status === 'limit' ? 'threshold' : row.status;
+    };
+    const shortDays = (days) => days === null || days === undefined ? '' : `~${Math.max(1, Math.round(days))}d`;
+    const trendStatusLabel = (row, status) => {
+        if (status === 'ceiling') {
+            return row.card_days !== null && row.card_days !== undefined && row.card_days <= 0
+                ? 'Ja no teto'
+                : `Teto em ${shortDays(row.card_days)}`;
+        }
+        if (status === 'threshold') {
+            return row.days_to_limit !== null && row.days_to_limit !== undefined && row.days_to_limit <= 0
+                ? 'Acima do threshold'
+                : `Threshold em ${shortDays(row.days_to_limit)}`;
+        }
+        return (TREND_STATUS[status] || TREND_STATUS.insufficient)[1];
+    };
     const trendValue = (value, unit) => value === null || value === undefined
         ? '—'
         : `${Number(value).toLocaleString('pt-BR', {maximumFractionDigits: unit === '%' ? 1 : 2})}${unit}`;
@@ -102,7 +128,7 @@
             return '—';
         }
         const value = Number(slope);
-        const suffix = unit === '%' ? ' p.p./dia' : '/dia';
+        const suffix = unit === '%' ? '%/dia' : '/dia';
         if (Math.abs(value) < (unit === '%' ? 0.005 : 0.0005)) {
             return `≈ 0${suffix}`;
         }
@@ -1176,32 +1202,89 @@
             return card;
         }
 
-        sparkline(series, statusClass) {
-            const values = (series || []).map((v) => (v === null ? null : Number(v)));
+        sparkline(row, statusClass, horizon) {
+            const values = (row.series || []).map((v) => (v === null ? null : Number(v)));
             const known = values.filter((v) => v !== null);
             const svgNs = 'http://www.w3.org/2000/svg';
+            const width = 180;
+            const height = 26;
             const svg = document.createElementNS(svgNs, 'svg');
-            svg.setAttribute('width', '120');
-            svg.setAttribute('height', '22');
-            svg.setAttribute('viewBox', '0 0 120 22');
+            svg.setAttribute('width', String(width));
+            svg.setAttribute('height', String(height));
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
             svg.setAttribute('class', `proxy-health-sparkline ${statusClass}`);
-            svg.setAttribute('aria-hidden', 'true');
             if (known.length < 2) {
                 return svg;
             }
-            const min = Math.min(...known);
-            const max = Math.max(...known);
+
+            const hasForecast = row.projection !== null && row.projection !== undefined && row.current !== null;
+            const {threshold, ceiling} = trendLimits(row);
+            const top = Math.max(...known, hasForecast ? Number(row.projection) : -Infinity);
+            // Linhas de referencia so quando estao perto da serie; senao achatam o grafico.
+            const showThreshold = threshold !== null && top >= threshold * 0.5;
+            const showCeiling = ceiling !== null && top >= ceiling * 0.8;
+            const range = [...known];
+            if (hasForecast) {
+                range.push(Number(row.current), Number(row.projection));
+            }
+            if (showThreshold) {
+                range.push(threshold);
+            }
+            if (showCeiling) {
+                range.push(ceiling);
+            }
+            let min = Math.min(...range);
+            let max = Math.max(...range);
+            // Escala minima de 10 p.p. em percentuais: variacao pequena nao pode parecer subida forte.
+            const minSpan = row.unit === '%' ? 10 : 0;
+            if (max - min < minSpan) {
+                const pad = (minSpan - (max - min)) / 2;
+                min = Math.max(0, min - pad);
+                max = min + minSpan;
+            }
             const span = max - min || 1;
-            const step = 120 / Math.max(1, values.length - 1);
-            const points = values
-                .map((v, i) => (v === null ? null : `${(i * step).toFixed(1)},${(20 - ((v - min) / span) * 18).toFixed(1)}`))
+            const y = (v) => (height - 3 - ((v - min) / span) * (height - 6)).toFixed(1);
+
+            // Historico a esquerda; a projecao ocupa a fracao proporcional ao horizonte (no maximo metade).
+            const count = values.length;
+            const futureShare = hasForecast ? Math.min(0.5, horizon / Math.max(1, count - 1 + horizon)) : 0;
+            const historyWidth = width * (1 - futureShare);
+            const step = historyWidth / Math.max(1, count - 1);
+            const line = (x1, y1, x2, y2, cls) => {
+                const el = document.createElementNS(svgNs, 'line');
+                el.setAttribute('x1', x1);
+                el.setAttribute('y1', y1);
+                el.setAttribute('x2', x2);
+                el.setAttribute('y2', y2);
+                el.setAttribute('class', cls);
+                svg.append(el);
+            };
+
+            if (showCeiling) {
+                line(0, y(ceiling), width, y(ceiling), 'is-ceiling-line');
+            }
+            if (showThreshold) {
+                // Mesmo desenho das linhas de trigger dos graficos do Zabbix: tracejado amarelo sobre cinza.
+                line(0, y(threshold), width, y(threshold), 'is-threshold-base');
+                line(0, y(threshold), width, y(threshold), 'is-threshold-dash');
+            }
+
+            const history = document.createElementNS(svgNs, 'polyline');
+            history.setAttribute('points', values
+                .map((v, i) => (v === null ? null : `${(i * step).toFixed(1)},${y(v)}`))
                 .filter(Boolean)
-                .join(' ');
-            const line = document.createElementNS(svgNs, 'polyline');
-            line.setAttribute('points', points);
-            line.setAttribute('fill', 'none');
-            line.setAttribute('stroke-width', '1.6');
-            svg.append(line);
+                .join(' '));
+            history.setAttribute('class', 'is-history');
+            svg.append(history);
+            if (hasForecast) {
+                line(historyWidth.toFixed(1), y(Number(row.current)), width, y(Number(row.projection)), 'is-forecast');
+            }
+
+            const title = document.createElementNS(svgNs, 'title');
+            title.textContent = `Linha cheia: P95 diario dos ultimos ${count} dias. Tracejada: projecao para ${horizon} dias.`
+                + (showThreshold ? ` Amarela: threshold ${trendValue(threshold, row.unit)}.` : '')
+                + (showCeiling ? ` Vermelha: teto ${row.unit === '' ? '(numero de CPUs)' : trendValue(ceiling, row.unit)}.` : '');
+            svg.append(title);
             return svg;
         }
 
@@ -1223,15 +1306,15 @@
                 return section;
             }
 
-            const order = {limit: 0, growing: 1, decreasing: 2, stable: 3, insufficient: 4};
+            const order = {ceiling: 0, threshold: 1, growing: 2, decreasing: 3, stable: 4, insufficient: 5};
             const table = document.createElement('table');
             table.className = 'proxy-health-detail-table proxy-health-trend-table';
-            table.innerHTML = `<thead><tr><th>Recurso</th><th class="is-right">Hoje (P95)</th><th>Ultimos ${settings.trend_days || 30} dias</th>`
-                + `<th class="is-right">Variacao</th><th class="is-right">Projecao em ${horizon}d</th><th class="is-right">Limite</th><th>Situacao</th></tr></thead>`;
+            table.innerHTML = `<thead><tr><th>Recurso</th><th class="is-right">Hoje (P95)</th><th>Ultimos ${settings.trend_days || 30} dias · projecao</th>`
+                + `<th class="is-right">Variacao</th><th class="is-right">Em ${horizon}d</th><th class="is-right">Threshold / teto</th><th>Situacao</th></tr></thead>`;
             const tbody = document.createElement('tbody');
             Object.entries(TREND_GROUPS).forEach(([group, groupLabel]) => {
                 const allRows = rows.filter((row) => row.group === group)
-                    .sort((a, b) => order[a.status] - order[b.status] || String(a.label).localeCompare(String(b.label)));
+                    .sort((a, b) => order[trendStatus(a)] - order[trendStatus(b)] || String(a.label).localeCompare(String(b.label)));
                 if (allRows.length === 0) {
                     return;
                 }
@@ -1251,28 +1334,35 @@
                 tbody.append(groupRow);
 
                 groupRows.forEach((row) => {
-                    const [statusClass, statusLabel] = TREND_STATUS[row.status] || TREND_STATUS.insufficient;
+                    const status = trendStatus(row);
+                    const [statusClass] = TREND_STATUS[status] || TREND_STATUS.insufficient;
+                    const {threshold, ceiling} = trendLimits(row);
                     const tr = document.createElement('tr');
                     const cells = [
                         row.label,
                         trendValue(row.current, row.unit),
                         null,
                         slopeLabel(row.slope, row.unit),
-                        row.status === 'limit' && row.days_to_limit !== null
-                            ? `${trendValue(row.projection, row.unit)} (${daysLabel(row.days_to_limit)})`
-                            : trendValue(row.projection, row.unit),
-                        row.group === 'vm' && row.unit === '' ? '1 por nucleo' : trendValue(row.limit, row.unit),
+                        trendValue(row.projection, row.unit),
+                        `${threshold === null ? '—' : trendValue(threshold, row.unit)} / `
+                            + (ceiling === null ? '—' : (row.unit === '' ? '1 por nucleo' : trendValue(ceiling, row.unit))),
                         null
                     ];
                     cells.forEach((value, index) => {
                         const td = document.createElement('td');
                         if (index === 2) {
-                            td.append(this.sparkline(row.series, statusClass));
+                            td.append(this.sparkline(row, statusClass, horizon));
                         }
                         else if (index === 6) {
                             const pill = document.createElement('span');
                             pill.className = `proxy-health-trend-pill ${statusClass}`;
-                            pill.textContent = row.card ? `${statusLabel} · card` : statusLabel;
+                            pill.textContent = trendStatusLabel(row, status);
+                            if (status === 'ceiling') {
+                                pill.title = 'Projecao passa do limite fisico: gera card no detalhe e icone na linha do proxy.';
+                            }
+                            else if (status === 'threshold') {
+                                pill.title = 'Projecao passa do threshold de trigger, mas nao do limite fisico: sem card.';
+                            }
                             td.append(pill);
                         }
                         else {
@@ -1307,9 +1397,9 @@
 
             const legend = document.createElement('p');
             legend.className = 'proxy-health-muted proxy-health-trend-legend';
-            legend.textContent = 'Vermelho: projetado para passar do limite no horizonte · Amarelo: crescendo · Verde: estavel · Azul: descendo. '
-                + 'Metodo: P95 diario da janela de trends, inclinacao robusta (Theil-Sen), minimo de 14 dias. '
-                + 'Cards aparecem quando disco ou memoria passam de 100%, o load passa do numero de CPUs, ou um processo/cache passa de 100%.';
+            legend.textContent = 'Teto (vermelho): passa do limite fisico (100% ou numero de CPUs) no horizonte, gera card. '
+                + 'Threshold (laranja): passa do threshold de trigger, sem card. Amarelo: crescendo · Verde: estavel · Azul: descendo. '
+                + 'Grafico: linha cheia = P95 diario da janela de trends; tracejada = projecao (Theil-Sen, minimo de 14 dias); amarela tracejada = threshold.';
             section.append(legend);
             return section;
         }
