@@ -86,6 +86,36 @@
             ? number.toLocaleString('pt-BR', {maximumFractionDigits: 1})
             : '—';
     };
+    const TREND_STATUS = {
+        limit: ['is-limit', 'Vai passar do limite'],
+        growing: ['is-growing', 'Crescendo'],
+        stable: ['is-stable', 'Estavel'],
+        decreasing: ['is-decreasing', 'Descendo'],
+        insufficient: ['is-insufficient', 'Dados insuficientes']
+    };
+    const TREND_GROUPS = {vm: 'Capacidade da VM', process: 'Processos', cache: 'Caches', load: 'Carga'};
+    const trendValue = (value, unit) => value === null || value === undefined
+        ? '—'
+        : `${Number(value).toLocaleString('pt-BR', {maximumFractionDigits: unit === '%' ? 1 : 2})}${unit}`;
+    const slopeLabel = (slope, unit) => {
+        if (slope === null || slope === undefined) {
+            return '—';
+        }
+        const value = Number(slope);
+        const suffix = unit === '%' ? ' p.p./dia' : '/dia';
+        if (Math.abs(value) < (unit === '%' ? 0.005 : 0.0005)) {
+            return `≈ 0${suffix}`;
+        }
+        const text = Math.abs(value) < 1
+            ? value.toLocaleString('pt-BR', {maximumSignificantDigits: 2})
+            : value.toLocaleString('pt-BR', {maximumFractionDigits: 1});
+        return `${value > 0 ? '+' : ''}${text}${suffix}`;
+    };
+    const daysLabel = (days) => days === null || days === undefined
+        ? ''
+        : (days <= 0 ? 'ja no limite' : `em ~${Math.max(1, Math.round(days))} dias`);
+    const TREND_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3v11"></path><path d="M12 19.5v.5"></path></svg>'
+        + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>';
     const percentFormat = (value) => `${value.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}%`;
     const countFormat = (value) => Math.round(value).toLocaleString('pt-BR');
     // Colunas da tabela: campo do payload e os settings de atencao/critico usados na regua de cada barra.
@@ -298,11 +328,31 @@
             const expand = event.target.closest('[data-proxy-expand]');
             if (expand && this.root.contains(expand)) {
                 const host = expand.dataset.proxyExpand;
-                if (this.expanded.has(host)) {
+                const tab = expand.dataset.proxyOpenTab;
+                const current = this.detailTabs[host] === 'trends' ? 'trends' : 'readings';
+                const wanted = tab === 'trends' ? 'trends' : 'readings';
+                if (this.expanded.has(host) && (!tab || current === wanted)) {
                     this.expanded.delete(host);
                 }
                 else {
                     this.expanded.add(host);
+                    if (tab) {
+                        this.detailTabs[host] = tab;
+                    }
+                }
+                this.render();
+                return;
+            }
+
+            const idleToggle = event.target.closest('[data-proxy-trend-idle]');
+            if (idleToggle && this.root.contains(idleToggle)) {
+                this.trendIdleOpen = this.trendIdleOpen || new Set();
+                const key = idleToggle.dataset.proxyTrendIdle;
+                if (this.trendIdleOpen.has(key)) {
+                    this.trendIdleOpen.delete(key);
+                }
+                else {
+                    this.trendIdleOpen.add(key);
                 }
                 this.render();
                 return;
@@ -679,6 +729,15 @@
             toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
             toggle.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg><span></span>';
             toggle.querySelector('span').textContent = proxy.host;
+            const alerts = proxy.trend_alerts || [];
+            if (alerts.length > 0) {
+                const badge = document.createElement('span');
+                badge.className = 'proxy-health-trend-badge';
+                badge.innerHTML = TREND_ICON;
+                badge.title = alerts.map((alert) => this.trendAlertTitle(alert)).join('\n');
+                badge.setAttribute('aria-label', `Tendencia: ${badge.title}`);
+                toggle.append(badge);
+            }
             const meta = document.createElement('div');
             meta.className = 'proxy-health-object-meta';
             meta.textContent = [
@@ -813,19 +872,45 @@
             const cell = document.createElement('td');
             cell.colSpan = METRIC_COLUMNS.length + 3;
 
+            const alerts = proxy.trend_alerts || [];
+            if (alerts.length > 0) {
+                const cards = document.createElement('div');
+                cards.className = 'proxy-health-trend-cards';
+                alerts.forEach((alert) => cards.append(this.trendCard(alert)));
+                cell.append(cards);
+            }
+
             const grid = document.createElement('div');
             grid.className = 'proxy-health-detail-grid';
             grid.append(this.scoreComposition(proxy), this.problemList(proxy));
             cell.append(grid);
 
             const expanded = this.expanded.has(proxy.host);
+            const showingTrends = expanded && this.detailTabs[proxy.host] === 'trends';
+            const actions = document.createElement('div');
+            actions.className = 'proxy-health-detail-actions';
             const readings = document.createElement('button');
             readings.type = 'button';
             readings.className = 'proxy-health-link-button';
             readings.dataset.proxyExpand = proxy.host;
-            readings.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-            readings.textContent = expanded ? 'Ocultar leituras de processos e caches' : 'Ver leituras de processos e caches';
-            cell.append(readings);
+            readings.dataset.proxyOpenTab = 'process_config';
+            readings.setAttribute('aria-expanded', expanded && !showingTrends ? 'true' : 'false');
+            readings.textContent = expanded && !showingTrends ? 'Ocultar leituras de processos e caches' : 'Ver leituras de processos e caches';
+            const trendsButton = document.createElement('button');
+            trendsButton.type = 'button';
+            trendsButton.className = 'proxy-health-link-button';
+            trendsButton.dataset.proxyExpand = proxy.host;
+            trendsButton.dataset.proxyOpenTab = 'trends';
+            trendsButton.setAttribute('aria-expanded', showingTrends ? 'true' : 'false');
+            trendsButton.textContent = showingTrends ? 'Ocultar tendencias' : 'Ver tendencias';
+            if (alerts.length > 0) {
+                const count = document.createElement('span');
+                count.className = 'proxy-health-trend-count';
+                count.textContent = String(alerts.length);
+                trendsButton.append(' ', count);
+            }
+            actions.append(readings, trendsButton);
+            cell.append(actions);
             if (expanded) {
                 cell.append(this.details(proxy.host));
             }
@@ -1032,6 +1117,14 @@
                 }
             ];
 
+            const proxy = (this.data.proxies || []).find((row) => row.host === host);
+            const trendAlerts = (proxy?.trend_alerts || []).length;
+            sections.push({
+                id: 'trends',
+                label: trendAlerts > 0 ? `Tendencias (${trendAlerts})` : 'Tendencias',
+                table: this.trendSection(proxy)
+            });
+
             const active = sections.some((section) => section.id === this.detailTabs[host])
                 ? this.detailTabs[host]
                 : sections[0].id;
@@ -1054,6 +1147,167 @@
             });
 
             return wrapper;
+        }
+
+        trendAlertTitle(alert) {
+            const limit = alert.group === 'vm' && alert.unit === '' ? 'o numero de CPUs' : trendValue(alert.card_limit, alert.unit);
+            return `${alert.label}: projetado para passar de ${limit} ${daysLabel(alert.days)}`.trim();
+        }
+
+        trendCard(alert) {
+            const card = document.createElement('div');
+            card.className = 'proxy-health-trend-card';
+            const icon = document.createElement('span');
+            icon.className = 'proxy-health-trend-badge';
+            icon.innerHTML = TREND_ICON;
+            const body = document.createElement('div');
+            const title = document.createElement('strong');
+            title.textContent = this.trendAlertTitle(alert);
+            const detail = document.createElement('span');
+            detail.className = 'proxy-health-muted';
+            const step = slopeLabel(alert.slope, alert.unit);
+            detail.textContent = `Hoje ${trendValue(alert.current, alert.unit)}, ${step}. Tendencia dentro do horizonte configurado; nao desconta da nota.`;
+            body.append(title, detail);
+            card.append(icon, body);
+            return card;
+        }
+
+        sparkline(series, statusClass) {
+            const values = (series || []).map((v) => (v === null ? null : Number(v)));
+            const known = values.filter((v) => v !== null);
+            const svgNs = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(svgNs, 'svg');
+            svg.setAttribute('width', '120');
+            svg.setAttribute('height', '22');
+            svg.setAttribute('viewBox', '0 0 120 22');
+            svg.setAttribute('class', `proxy-health-sparkline ${statusClass}`);
+            svg.setAttribute('aria-hidden', 'true');
+            if (known.length < 2) {
+                return svg;
+            }
+            const min = Math.min(...known);
+            const max = Math.max(...known);
+            const span = max - min || 1;
+            const step = 120 / Math.max(1, values.length - 1);
+            const points = values
+                .map((v, i) => (v === null ? null : `${(i * step).toFixed(1)},${(20 - ((v - min) / span) * 18).toFixed(1)}`))
+                .filter(Boolean)
+                .join(' ');
+            const line = document.createElementNS(svgNs, 'polyline');
+            line.setAttribute('points', points);
+            line.setAttribute('fill', 'none');
+            line.setAttribute('stroke-width', '1.6');
+            svg.append(line);
+            return svg;
+        }
+
+        trendSection(proxy) {
+            const section = document.createElement('section');
+            section.className = 'proxy-health-detail-section proxy-health-trend-section';
+            const settings = this.data.settings || {};
+            const horizon = Number(settings.forecast_horizon || 30);
+            const heading = document.createElement('h4');
+            heading.textContent = `Tendencias de recursos · projecao para ${horizon} dias (nao desconta da nota)`;
+            section.append(heading);
+
+            const rows = proxy?.trends || [];
+            if (rows.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'proxy-health-muted';
+                empty.textContent = 'Sem series de trends suficientes para este objeto.';
+                section.append(empty);
+                return section;
+            }
+
+            const order = {limit: 0, growing: 1, decreasing: 2, stable: 3, insufficient: 4};
+            const table = document.createElement('table');
+            table.className = 'proxy-health-detail-table proxy-health-trend-table';
+            table.innerHTML = `<thead><tr><th>Recurso</th><th class="is-right">Hoje (P95)</th><th>Ultimos ${settings.trend_days || 30} dias</th>`
+                + `<th class="is-right">Variacao</th><th class="is-right">Projecao em ${horizon}d</th><th class="is-right">Limite</th><th>Situacao</th></tr></thead>`;
+            const tbody = document.createElement('tbody');
+            Object.entries(TREND_GROUPS).forEach(([group, groupLabel]) => {
+                const allRows = rows.filter((row) => row.group === group)
+                    .sort((a, b) => order[a.status] - order[b.status] || String(a.label).localeCompare(String(b.label)));
+                if (allRows.length === 0) {
+                    return;
+                }
+                // Processos e caches parados (P95 e projecao abaixo de 1%) nao dizem nada: ficam recolhidos.
+                const idle = (row) => group !== 'vm' && group !== 'load' && row.unit === '%'
+                    && ['stable', 'insufficient'].includes(row.status)
+                    && Number(row.current || 0) < 1 && Number(row.projection || 0) < 1;
+                const showIdle = this.trendIdleOpen?.has(`${proxy.host}:${group}`);
+                const idleRows = allRows.filter(idle);
+                const groupRows = showIdle ? allRows : allRows.filter((row) => !idle(row));
+                const groupRow = document.createElement('tr');
+                groupRow.className = 'proxy-health-trend-group';
+                const groupCell = document.createElement('td');
+                groupCell.colSpan = 7;
+                groupCell.textContent = groupLabel;
+                groupRow.append(groupCell);
+                tbody.append(groupRow);
+
+                groupRows.forEach((row) => {
+                    const [statusClass, statusLabel] = TREND_STATUS[row.status] || TREND_STATUS.insufficient;
+                    const tr = document.createElement('tr');
+                    const cells = [
+                        row.label,
+                        trendValue(row.current, row.unit),
+                        null,
+                        slopeLabel(row.slope, row.unit),
+                        row.status === 'limit' && row.days_to_limit !== null
+                            ? `${trendValue(row.projection, row.unit)} (${daysLabel(row.days_to_limit)})`
+                            : trendValue(row.projection, row.unit),
+                        row.group === 'vm' && row.unit === '' ? '1 por nucleo' : trendValue(row.limit, row.unit),
+                        null
+                    ];
+                    cells.forEach((value, index) => {
+                        const td = document.createElement('td');
+                        if (index === 2) {
+                            td.append(this.sparkline(row.series, statusClass));
+                        }
+                        else if (index === 6) {
+                            const pill = document.createElement('span');
+                            pill.className = `proxy-health-trend-pill ${statusClass}`;
+                            pill.textContent = row.card ? `${statusLabel} · card` : statusLabel;
+                            td.append(pill);
+                        }
+                        else {
+                            td.textContent = value;
+                            if ([1, 3, 4, 5].includes(index)) {
+                                td.className = 'is-right proxy-health-num';
+                            }
+                        }
+                        tr.append(td);
+                    });
+                    tbody.append(tr);
+                });
+
+                if (idleRows.length > 0) {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 7;
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'proxy-health-link-button';
+                    button.dataset.proxyTrendIdle = `${proxy.host}:${group}`;
+                    button.textContent = showIdle
+                        ? `Ocultar ${idleRows.length} ${group === 'process' ? 'processos' : 'caches'} ociosos e estaveis`
+                        : `+ ${idleRows.length} ${group === 'process' ? 'processos' : 'caches'} ociosos e estaveis (abaixo de 1%)`;
+                    td.append(button);
+                    tr.append(td);
+                    tbody.append(tr);
+                }
+            });
+            table.append(tbody);
+            section.append(table);
+
+            const legend = document.createElement('p');
+            legend.className = 'proxy-health-muted proxy-health-trend-legend';
+            legend.textContent = 'Vermelho: projetado para passar do limite no horizonte · Amarelo: crescendo · Verde: estavel · Azul: descendo. '
+                + 'Metodo: P95 diario da janela de trends, inclinacao robusta (Theil-Sen), minimo de 14 dias. '
+                + 'Cards aparecem quando disco ou memoria passam de 100%, o load passa do numero de CPUs, ou um processo/cache passa de 100%.';
+            section.append(legend);
+            return section;
         }
 
         detailTable(title, headers, rows) {

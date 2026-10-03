@@ -163,6 +163,14 @@ $form_list = (new CFormList('proxy_health_config_list'))
         (new CLabel(_('Janela de trends'), 'trend_days'))->setAsteriskMark(),
         [$number('trend_days', $settings['trend_days'].'d'), ' ', $hint(_('de 7d a 30d'))]
     )
+    ->addRow(
+        (new CLabel(_('Horizonte da projecao'), 'forecast_horizon'))->setAsteriskMark(),
+        [
+            $number('forecast_horizon', $settings['forecast_horizon'].'d'),
+            ' ',
+            $hint(_('sempre relativo a hoje (ex.: 15d, 30d, 8w); padrao 30d. Usado nas tendencias, que nao descontam da nota.'))
+        ]
+    )
     ->addRow($section(_('Limites do score')))
     ->addRow(
         _('Metricas'),
@@ -507,6 +515,15 @@ $rules = (new CDiv([
             _('Quando o cache passa do threshold, o recomendado usa o item num.recomendado.* quando valido ou calcula localmente com carga desejada de 60%.'),
             _('Valores configurados como 8M, 16M ou 1G sao convertidos para bytes no backend e apresentados em unidade humana no frontend.'),
             _('Proxy memory buffer e outros caches sem parametro configuravel sao exibidos como leitura de apoio, sem recomendacao de configuracao quando nao ha diretiva equivalente.')
+        ]),
+        $rules_section(_('Tendencias de recursos'), [
+            _('As tendencias nunca descontam da nota: a nota mede o estado atual, a tendencia mostra para onde o proxy vai.'),
+            sprintf(_('Recursos acompanhados: disco, memoria, load por nucleo (load / numero de CPUs), busy dos processos internos, uso dos caches e VPS. A projecao vai ate o horizonte configurado (hoje %1$s dias, sempre relativo a data atual).'), $settings['forecast_horizon']),
+            _('A serie usada e o P95 diario dos trends da janela configurada; a inclinacao e calculada por Theil-Sen (mediana das inclinacoes entre todos os pares de dias), que ignora dias atipicos. Com menos de 14 dias de dados a tendencia aparece como dados insuficientes.'),
+            _('Nenhuma consulta extra e feita: a tendencia reaproveita os mesmos trends ja buscados para o P95.'),
+            _('Cores: vermelho quando a projecao passa do limite dentro do horizonte; amarelo quando cresce; verde quando estavel (variacao menor que 5% do limite no horizonte); azul quando desce.'),
+            _('Limites de cor: 100% para disco e memoria, 1 por nucleo para o load, o threshold de pollers para processos, o threshold de caches para caches e o VPS maximo para VPS.'),
+            _('Vira card no detalhe do proxy e icone (exclamacao com relogio) na linha recolhida quando: disco ou memoria projetados para 100% ou mais; load projetado acima do numero de CPUs; ou um processo/cache projetado para 100% ou mais.')
         ]),
         $rules_section(_('Boas praticas reforcadas'), [
             _('Manter proxies em versoes recentes e acima do patch minimo definido para o ambiente.'),

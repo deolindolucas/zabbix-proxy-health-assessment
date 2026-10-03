@@ -1,5 +1,13 @@
 # Changelog — Proxy Health Assessment
 
+## 4.6.0
+
+- Tendencias de recursos por proxy (nao entram na nota): disco, memoria, load por nucleo (load / numero de CPUs), busy dos processos internos, caches e VPS.
+- Serie de P95 diario a partir dos mesmos trends ja buscados para o P95 (nenhuma consulta extra; o load passou a entrar nos trends); inclinacao por Theil-Sen; minimo de 14 dias.
+- Nova aba "Tendencias" no detalhe do proxy e botao "Ver tendencias", com cores: vermelho (passa do limite no horizonte), amarelo (crescendo), verde (estavel), azul (descendo). Processos/caches ociosos ficam recolhidos.
+- Card no detalhe e icone (exclamacao + relogio) na linha recolhida quando disco/memoria vao a 100%, o load passa do numero de CPUs, ou processo/cache vai a 100% ou mais.
+- Novo campo "Horizonte da projecao" (padrao 30d, sempre relativo, de 1d a 365d) e secao "Tendencias de recursos" nas regras de negocio.
+
 ## 4.5.1
 - A aba Regras de negócio usa a largura toda da tela: os blocos visuais ocupam a largura inteira e as seções de texto completo ficam lado a lado em colunas.
 

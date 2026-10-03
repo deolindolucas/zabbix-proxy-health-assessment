@@ -1206,3 +1206,101 @@ html[color-scheme="dark"] .proxy-health {
     display: block;
     margin-top: 4px;
 }
+
+/* ---- Tendencias de recursos (nao entram na nota) ---- */
+.proxy-health-trend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    margin-left: 6px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(214, 93, 74, .16);
+    color: var(--ph-risk-text);
+    vertical-align: middle;
+}
+
+.proxy-health-trend-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.proxy-health-trend-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(214, 93, 74, .45);
+    border-radius: 6px;
+    background: rgba(214, 93, 74, .08);
+}
+
+.proxy-health-trend-card .proxy-health-trend-badge {
+    margin-left: 0;
+}
+
+.proxy-health-trend-card > div {
+    display: grid;
+    gap: 3px;
+}
+
+.proxy-health-trend-card strong {
+    color: var(--ph-risk-text);
+}
+
+.proxy-health-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+}
+
+.proxy-health-trend-count {
+    display: inline-block;
+    min-width: 16px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: rgba(214, 93, 74, .18);
+    color: var(--ph-risk-text);
+    font-size: 11px;
+    text-align: center;
+}
+
+.proxy-health-trend-table .is-right {
+    text-align: right;
+}
+
+.proxy-health-trend-group td {
+    padding-top: 12px;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    opacity: .75;
+}
+
+.proxy-health-trend-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.proxy-health-trend-pill.is-limit { background: rgba(214, 93, 74, .16); color: var(--ph-risk-text); }
+.proxy-health-trend-pill.is-growing { background: rgba(211, 155, 32, .16); color: var(--ph-warn-text); }
+.proxy-health-trend-pill.is-stable { background: rgba(38, 150, 111, .16); color: var(--ph-good-text); }
+.proxy-health-trend-pill.is-decreasing { background: rgba(2, 123, 199, .16); color: var(--ph-link); }
+.proxy-health-trend-pill.is-insufficient { background: var(--ph-chip); }
+
+.proxy-health-sparkline polyline { stroke: currentColor; }
+.proxy-health-sparkline.is-limit { color: var(--ph-risk-text); }
+.proxy-health-sparkline.is-growing { color: var(--ph-warn-text); }
+.proxy-health-sparkline.is-stable { color: var(--ph-good-text); }
+.proxy-health-sparkline.is-decreasing { color: var(--ph-link); }
+.proxy-health-sparkline.is-insufficient { color: var(--ph-muted-text); }
+
+.proxy-health-trend-legend {
+    margin: 8px 0 0;
+    font-size: 12px;
+}
