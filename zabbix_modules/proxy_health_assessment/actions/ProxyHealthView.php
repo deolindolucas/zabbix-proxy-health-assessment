@@ -1536,9 +1536,9 @@ class ProxyHealthView extends CController {
 
         $caches = [
             [_('Configuration cache'), [['zabbix[rcache,buffer,pused]', false], ['zabbix[rcache,buffer,pfree]', true]]],
-            [_('History cache'), [['zabbix[wcache,history,pused]', false], ['zabbix[wcache,history,pfree]', true]]],
+            [_('History write cache'), [['zabbix[wcache,history,pused]', false], ['zabbix[wcache,history,pfree]', true]]],
             [_('History index cache'), [['zabbix[wcache,index,pused]', false]]],
-            [_('Trend cache'), [['zabbix[wcache,trend,pused]', false]]],
+            [_('Trend write cache'), [['zabbix[wcache,trend,pused]', false]]],
             [_('Value cache'), [['zabbix[vcache,buffer,pused]', false]]],
             [_('Proxy memory buffer'), [['zabbix[proxy_buffer,buffer,pused]', false]]],
             [_('VMware cache'), [['zabbix[vmware,buffer,pused]', false]]]

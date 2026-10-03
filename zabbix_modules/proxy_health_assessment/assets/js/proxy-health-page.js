@@ -1078,12 +1078,19 @@
                 }
             });
 
+            const trendProxy = (this.data.proxies || []).find((row) => row.host === host);
+            const trendByName = new Map((trendProxy?.trends || [])
+                .filter((row) => row.group === 'process' || row.group === 'cache')
+                .map((row) => [`${row.group}:${row.label}`, row]));
+            const miniTrend = (group, name) => this.miniSparkline(trendByName.get(`${group}:${name}`));
+
             const configurableProcessRows = processConfig
                 .filter((row) => row.status !== 'Sem parametro configuravel')
                 .map((row) => [
                     row.process,
                     fmt(row.p95, 1, '%'),
                     fmt(row.avg30d, 1, '%'),
+                    miniTrend('process', row.process),
                     row.config_param || '—',
                     row.config_value ?? '—',
                     row.recommended_value ?? '—',
@@ -1096,6 +1103,7 @@
                     row.process,
                     fmt(row.p95, 1, '%'),
                     fmt(row.avg30d, 1, '%'),
+                    miniTrend('process', row.process),
                     row.status
                 ]);
             const otherConfigRows = this.data.config_items
@@ -1107,7 +1115,7 @@
                     id: 'process_config',
                     label: 'Processos x config',
                     table: this.detailTable('Pollers e processos com configuracao equivalente',
-                    ['Parametro', 'P95', 'Media trends', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+                    ['Parametro', 'P95', 'Media trends', '30 dias', 'Item de configuracao', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     configurableProcessRows
                     )
                 },
@@ -1115,7 +1123,7 @@
                     id: 'internal_processes',
                     label: 'Processos internos',
                     table: this.detailTable('Demais processos internos',
-                    ['Parametro', 'P95', 'Media trends', 'Status'],
+                    ['Parametro', 'P95', 'Media trends', '30 dias', 'Status'],
                     nonConfigurableProcessRows
                     )
                 },
@@ -1123,10 +1131,11 @@
                     id: 'caches',
                     label: 'Caches',
                     table: this.detailTable('Caches versus configuracao',
-                    ['Cache', 'Uso P95', 'Media trends', 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
+                    ['Cache', 'Uso P95', 'Media trends', '30 dias', 'Parametro', 'Configurado', 'Recomendado', 'Status', 'Acao sugerida'],
                     cacheConfig
                         .map((row) => [
                             row.cache, fmt(row.p95, 1, '%'), fmt(row.avg30d, 1, '%'),
+                            miniTrend('cache', row.cache),
                             row.config_param || '—', row.config_value ?? '—',
                             humanBytes(row.recommended_bytes),
                             row.status, cacheAction(row)
@@ -1288,6 +1297,41 @@
             return svg;
         }
 
+        miniSparkline(row) {
+            if (!row || (row.series || []).filter((v) => v !== null).length < 2) {
+                return '—';
+            }
+            const status = trendStatus(row);
+            const [statusClass, label] = TREND_STATUS[status] || TREND_STATUS.insufficient;
+            const values = row.series.map((v) => (v === null ? null : Number(v)));
+            const known = values.filter((v) => v !== null);
+            const width = 90;
+            const height = 18;
+            let min = Math.min(...known);
+            let max = Math.max(...known);
+            if (max - min < 10) {
+                min = Math.max(0, min - (10 - (max - min)) / 2);
+                max = min + 10;
+            }
+            const step = width / Math.max(1, values.length - 1);
+            const svgNs = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(svgNs, 'svg');
+            svg.setAttribute('width', String(width));
+            svg.setAttribute('height', String(height));
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            svg.setAttribute('class', `proxy-health-sparkline ${statusClass}`);
+            const line = document.createElementNS(svgNs, 'polyline');
+            line.setAttribute('class', 'is-history');
+            line.setAttribute('points', values
+                .map((v, i) => (v === null ? null : `${(i * step).toFixed(1)},${(height - 2 - ((v - min) / (max - min)) * (height - 4)).toFixed(1)}`))
+                .filter(Boolean)
+                .join(' '));
+            const title = document.createElementNS(svgNs, 'title');
+            title.textContent = `P95 diario dos ultimos ${values.length} dias · ${trendStatusLabel(row, status) || label}`;
+            svg.append(line, title);
+            return svg;
+        }
+
         trendSection(proxy) {
             const section = document.createElement('section');
             section.className = 'proxy-health-detail-section proxy-health-trend-section';
@@ -1437,7 +1481,12 @@
                     const row = document.createElement('tr');
                     values.forEach((value) => {
                         const cell = document.createElement('td');
-                        cell.textContent = value ?? '—';
+                        if (value instanceof Node) {
+                            cell.append(value);
+                        }
+                        else {
+                            cell.textContent = value ?? '—';
+                        }
                         row.append(cell);
                     });
                     tbody.append(row);
