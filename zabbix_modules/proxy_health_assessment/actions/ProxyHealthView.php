@@ -1498,8 +1498,14 @@ class ProxyHealthView extends CController {
             if ($series === null) {
                 return;
             }
-            $rows[] = ['group' => $group, 'label' => $label, 'unit' => $unit, 'capacity' => $capacity]
+            $row = ['group' => $group, 'label' => $label, 'unit' => $unit, 'capacity' => $capacity]
                 + self::forecast($series, $limit, $horizon, $capacity);
+            // Sem teto fisico (VPS): so a cor da situacao, nunca card.
+            if ($unit !== '%' && !$capacity) {
+                $row['card'] = false;
+                $row['card_days'] = null;
+            }
+            $rows[] = $row;
         };
 
         // Capacidade da VM: estourar aqui pode derrubar o proxy.
@@ -1529,8 +1535,8 @@ class ProxyHealthView extends CController {
         }
 
         $caches = [
-            [_('Configuration cache'), [['zabbix[rcache,buffer,pused]', false], ['zabbix[rcache,buffer,pfree]', false]]],
-            [_('History cache'), [['zabbix[wcache,history,pused]', false], ['zabbix[wcache,history,pfree]', false]]],
+            [_('Configuration cache'), [['zabbix[rcache,buffer,pused]', false], ['zabbix[rcache,buffer,pfree]', true]]],
+            [_('History cache'), [['zabbix[wcache,history,pused]', false], ['zabbix[wcache,history,pfree]', true]]],
             [_('History index cache'), [['zabbix[wcache,index,pused]', false]]],
             [_('Trend cache'), [['zabbix[wcache,trend,pused]', false]]],
             [_('Value cache'), [['zabbix[vcache,buffer,pused]', false]]],

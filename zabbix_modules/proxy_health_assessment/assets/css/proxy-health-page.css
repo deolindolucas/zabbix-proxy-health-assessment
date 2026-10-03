@@ -1267,7 +1267,13 @@ html[color-scheme="dark"] .proxy-health {
     text-align: center;
 }
 
-.proxy-health-trend-table .is-right {
+.proxy-health-trend-table th,
+.proxy-health-trend-table td {
+    text-align: left;
+}
+
+.proxy-health-trend-table th.is-right,
+.proxy-health-trend-table td.is-right {
     text-align: right;
 }
 

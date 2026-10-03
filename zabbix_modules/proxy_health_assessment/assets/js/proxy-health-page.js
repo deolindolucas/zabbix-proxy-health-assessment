@@ -1150,8 +1150,12 @@
         }
 
         trendAlertTitle(alert) {
-            const limit = alert.group === 'vm' && alert.unit === '' ? 'o numero de CPUs' : trendValue(alert.card_limit, alert.unit);
-            return `${alert.label}: projetado para passar de ${limit} ${daysLabel(alert.days)}`.trim();
+            const cpus = alert.group === 'vm' && alert.unit === '';
+            const limit = cpus ? 'do numero de CPUs' : `de ${trendValue(alert.card_limit, alert.unit)}`;
+            if (alert.days !== null && alert.days !== undefined && alert.days <= 0) {
+                return cpus ? `${alert.label}: ja acima do numero de CPUs` : `${alert.label}: ja em ${trendValue(alert.card_limit, alert.unit)}`;
+            }
+            return `${alert.label}: projetado para passar ${limit} ${daysLabel(alert.days)}`.trim();
         }
 
         trendCard(alert) {
